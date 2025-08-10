@@ -208,8 +208,18 @@ class CompanyService {
       
       throw new Error('Invalid password');
     } catch (error) {
-      console.error('Error during signin:', error);
-      throw error;
+      // Only log unexpected errors, not authentication failures
+      if (error instanceof Error && (
+        error.message === 'Invalid password' || 
+        error.message === 'Email not found in any region'
+      )) {
+        // These are expected authentication failures, don't log them
+        throw error;
+      } else {
+        // Log unexpected errors
+        console.error('Error during signin:', error);
+        throw error;
+      }
     }
   }
 

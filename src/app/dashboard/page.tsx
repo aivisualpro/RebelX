@@ -99,6 +99,8 @@ function DashboardContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [userName, setUserName] = useState<string>('');
   
   // Refs for click outside detection
   const menuRef = useRef<HTMLDivElement>(null);
@@ -118,6 +120,42 @@ function DashboardContent() {
   useEffect(() => {
     refreshFromStorage();
   }, [refreshFromStorage]);
+
+  // Check if current user is admin and fetch user name
+  useEffect(() => {
+    const checkAdminStatus = () => {
+      try {
+        const userEmail = localStorage.getItem('userEmail');
+        setIsAdmin(userEmail === 'admin@aivisualpro.com');
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+        setIsAdmin(false);
+      }
+    };
+
+    const fetchUserName = async () => {
+      try {
+        const userEmail = localStorage.getItem('userEmail');
+        if (userEmail && companyData) {
+          // Fetch user name from the database using the email
+          const response = await fetch(`/api/user-name?email=${encodeURIComponent(userEmail)}&region=${region}`);
+          if (response.ok) {
+            const data = await response.json();
+            setUserName(data.name || userEmail.split('@')[0]); // Fallback to email prefix if name not found
+          } else {
+            setUserName(userEmail.split('@')[0]); // Fallback to email prefix
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user name:', error);
+        const userEmail = localStorage.getItem('userEmail');
+        setUserName(userEmail ? userEmail.split('@')[0] : 'User');
+      }
+    };
+
+    checkAdminStatus();
+    fetchUserName();
+  }, [region, companyData]);
 
   // Click outside to close menu and filters
   useEffect(() => {
@@ -318,13 +356,52 @@ function DashboardContent() {
           </div>
           {/* Business Health + Menu */}
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-600">Business Health</span>
-              <div className="w-24 h-2 rounded bg-slate-200 overflow-hidden">
-                <div className="h-2 bg-green-500 rounded animate-[pulse_1.6s_ease-in-out_infinite]" style={{ width: '56%' }}></div>
+            {analytics && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-600">Business Health</span>
+                <div className="relative">
+                  {/* Heart Icon with Animation */}
+                  <div className={`w-6 h-6 flex items-center justify-center ${
+                    analytics.kpis.businessHealth >= 80 
+                      ? 'animate-pulse' 
+                      : 'animate-bounce'
+                  }`}>
+                    <svg 
+                      className={`w-4 h-4 ${
+                        analytics.kpis.businessHealth >= 80 
+                          ? 'text-emerald-500' 
+                          : 'text-red-500'
+                      }`} 
+                      fill="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                    </svg>
+                  </div>
+                  {/* Pulse ring for healthy business */}
+                  {analytics.kpis.businessHealth >= 80 && (
+                    <div className="absolute inset-0 rounded-full bg-emerald-400 opacity-30 animate-ping"></div>
+                  )}
+                </div>
+                <div className="w-20 h-2 rounded bg-slate-200 overflow-hidden">
+                  <div 
+                    className={`h-2 rounded transition-all duration-1000 ${
+                      analytics.kpis.businessHealth >= 80 
+                        ? 'bg-emerald-500' 
+                        : 'bg-red-500'
+                    }`} 
+                    style={{ width: `${Math.min(analytics.kpis.businessHealth, 100)}%` }}
+                  ></div>
+                </div>
+                <span className={`text-sm font-semibold ${
+                  analytics.kpis.businessHealth >= 80 
+                    ? 'text-emerald-600' 
+                    : 'text-red-600'
+                }`}>
+                  {analytics.kpis.businessHealth.toFixed(1)}%
+                </span>
               </div>
-              <span className="text-sm font-semibold text-slate-900">56%</span>
-            </div>
+            )}
             {/* Region Toggle */}
             <div className="hidden sm:flex items-center border border-slate-200 rounded-lg overflow-hidden">
               <button 
@@ -379,7 +456,9 @@ function DashboardContent() {
                   animation: 'slideDown 0.2s ease-out',
                 }}
               >
-                <Link href={`/connections?companyId=${searchParams.get('companyId')}`} className="block px-4 py-2 hover:bg-slate-50">Connections</Link>
+                {isAdmin && (
+                  <Link href={`/connections?companyId=${searchParams.get('companyId')}`} className="block px-4 py-2 hover:bg-slate-50">Connections</Link>
+                )}
                 <div className="group relative">
                   <button className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center justify-between">
                     <span>Reports</span>
@@ -419,11 +498,19 @@ function DashboardContent() {
                   </div>
                 </div>
                 
-                <Link href={`/account?companyId=${searchParams.get('companyId')}`} className="block px-4 py-2 hover:bg-slate-50">Account</Link>
+
                 <button
-                  onClick={() => { document.cookie = 'companyId=; Max-Age=0; path=/'; localStorage.removeItem('region'); router.push('/auth'); }}
+                  onClick={() => { 
+                    document.cookie = 'companyId=; Max-Age=0; path=/'; 
+                    localStorage.removeItem('region'); 
+                    localStorage.removeItem('allowedRegions');
+                    localStorage.removeItem('userEmail');
+                    router.push('/auth'); 
+                  }}
                   className="block w-full text-left px-4 py-2 hover:bg-slate-50"
-                >Logout</button>
+                >
+                  Logout {userName && `(${userName})`}
+                </button>
               </div>
             )}
           </div>
@@ -553,11 +640,10 @@ function DashboardContent() {
                     const turnoverSeries = analytics.turnoverSeries as Array<{date: string, value: number}>;
                     
                     if (turnoverSeries && turnoverSeries.length > 0) {
-                      // Use real data from turnover series
+                      // Use real data from turnover series, mapping to new interface
                       return turnoverSeries.map(item => ({
-                        date: item.date,
-                        total: item.value,
-                        locations: {} // Not needed for single line chart
+                        Booking_Date: item.date,
+                        Total_Book: item.value
                       }));
                     } else {
                       // No real sales data available - return empty data or minimal data points
@@ -570,9 +656,8 @@ function DashboardContent() {
                         date.setDate(date.getDate() - i);
                         
                         data.push({
-                          date: date.toISOString().split('T')[0],
-                          total: 0, // Show zero sales when no real data exists
-                          locations: {}
+                          Booking_Date: date.toISOString().split('T')[0],
+                          Total_Book: 0 // Show zero sales when no real data exists
                         });
                       }
                       
@@ -587,27 +672,8 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* Second Row: Other KPI Cards */}
-        {analytics && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <div className="text-slate-500 text-sm">{t('dashboard.uniqueClients')}</div>
-              <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.kpis.uniqueClients}</div>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <div className="text-slate-500 text-sm">{t('dashboard.totalLocations')}</div>
-              <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.kpis.totalLocations}</div>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <div className="text-slate-500 text-sm">{t('dashboard.channels')}</div>
-              <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.kpis.acquisitionChannels}</div>
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <div className="text-slate-500 text-sm">{t('dashboard.bookingTypes')}</div>
-              <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.kpis.bookingTypes}</div>
-            </div>
-          </div>
-        )}
+        
+        
 
         {/* Third Row: Additional KPI Cards */}
         {analytics && (
@@ -630,6 +696,8 @@ function DashboardContent() {
             </div>
           </div>
         )}
+
+
 
         {/* Fourth Row: Performance KPI Cards - Light Theme */}
         {analytics && (
@@ -1188,29 +1256,118 @@ function DashboardContent() {
         {/* Status segmented bar & Location revenues */}
         {analytics && (
           <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Status segmented bar */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-              <div className="text-slate-900 font-semibold mb-4">Booking Status</div>
+            {/* Booking Status Pie Chart */}
+            <div className="bg-gradient-to-br from-slate-50 to-white rounded-2xl shadow-lg border border-slate-200/60 p-6 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
+              <div className="text-slate-900 font-semibold mb-6">Booking Status</div>
               {(() => {
                 const entries = Object.entries(analytics.distributions.statusCounts);
                 const total = entries.reduce((s, [,v]) => s + (v as number), 0);
                 if (total === 0) return <div className="text-slate-500 text-sm">No data</div>;
-                const colors = ['#16a34a','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#06b6d4'];
+                
+                const colors = [
+                  { main: '#16a34a', light: '#dcfce7', gradient: 'from-green-400 to-green-600' }, // Confirmed
+                  { main: '#f59e0b', light: '#fef3c7', gradient: 'from-amber-400 to-amber-600' }, // Pending
+                  { main: '#ef4444', light: '#fee2e2', gradient: 'from-red-400 to-red-600' },   // Canceled
+                  { main: '#3b82f6', light: '#dbeafe', gradient: 'from-blue-400 to-blue-600' }, // Other
+                  { main: '#8b5cf6', light: '#ede9fe', gradient: 'from-purple-400 to-purple-600' },
+                  { main: '#06b6d4', light: '#cffafe', gradient: 'from-cyan-400 to-cyan-600' }
+                ];
+
+                const radius = 80;
+                const centerX = 120;
+                const centerY = 120;
+                let currentAngle = -90; // Start from top
+
+                const segments = entries.map(([label, value], i) => {
+                  const percentage = (Number(value) / total) * 100;
+                  const angle = (Number(value) / total) * 360;
+                  const startAngle = currentAngle;
+                  const endAngle = currentAngle + angle;
+                  currentAngle += angle;
+
+                  const startAngleRad = (startAngle * Math.PI) / 180;
+                  const endAngleRad = (endAngle * Math.PI) / 180;
+
+                  const x1 = centerX + radius * Math.cos(startAngleRad);
+                  const y1 = centerY + radius * Math.sin(startAngleRad);
+                  const x2 = centerX + radius * Math.cos(endAngleRad);
+                  const y2 = centerY + radius * Math.sin(endAngleRad);
+
+                  const largeArcFlag = angle > 180 ? 1 : 0;
+
+                  const pathData = [
+                    `M ${centerX} ${centerY}`,
+                    `L ${x1} ${y1}`,
+                    `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+                    'Z'
+                  ].join(' ');
+
+                  return {
+                    label,
+                    value: Number(value),
+                    percentage: percentage.toFixed(1),
+                    pathData,
+                    color: colors[i % colors.length],
+                    angle: startAngle + angle / 2
+                  };
+                });
+
                 return (
-                  <div>
-                    <div className="h-6 w-full rounded bg-slate-200 overflow-hidden flex">
-                      {entries.map(([label, value], i) => (
-                        <div key={label} style={{ width: `${(Number(value)/total)*100}%`, background: colors[i % colors.length] }} />
-                      ))}
-                    </div>
-                    <div className="mt-3 space-y-1 text-sm">
-                      {entries.map(([label, value], i) => (
-                        <div key={label} className="flex items-center gap-2">
-                          <span className="w-3 h-3 rounded-sm" style={{ background: colors[i % colors.length] }} />
-                          <span className="text-slate-700">{label}</span>
-                          <span className="ml-auto text-slate-900 font-medium">{value as number}</span>
+                  <div className="flex items-center gap-4">
+                    {/* Small Legend on Left */}
+                    <div className="flex flex-col gap-1">
+                      {segments.map((segment, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <div 
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: segment.color.main }}
+                          />
+                          <span className="text-xs text-slate-600 font-medium">
+                            {segment.label} {segment.percentage}%
+                          </span>
                         </div>
                       ))}
+                    </div>
+
+                    {/* Clean Pie Chart */}
+                    <div className="relative">
+                      <svg width="200" height="200" className="drop-shadow-lg">
+                        <defs>
+                          {segments.map((segment, i) => (
+                            <linearGradient key={i} id={`bookingGradient${i}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                              <stop offset="0%" stopColor={segment.color.main} stopOpacity="0.8" />
+                              <stop offset="100%" stopColor={segment.color.main} stopOpacity="1" />
+                            </linearGradient>
+                          ))}
+                        </defs>
+                        {segments.map((segment, i) => (
+                          <g key={i}>
+                            <path
+                              d={segment.pathData}
+                              fill={`url(#bookingGradient${i})`}
+                              stroke="white"
+                              strokeWidth="3"
+                              className="hover:opacity-80 transition-opacity duration-300"
+                              style={{
+                                filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.1))',
+                                transformOrigin: `${centerX}px ${centerY}px`,
+                                animation: `pieSliceIn 0.8s ease-out ${i * 0.1}s both`
+                              }}
+                            />
+                          </g>
+                        ))}
+                        {/* Center circle for 3D effect */}
+                        <circle
+                          cx={centerX}
+                          cy={centerY}
+                          r="25"
+                          fill="white"
+                          stroke="#e2e8f0"
+                          strokeWidth="2"
+                          className="drop-shadow-sm"
+                        />
+                      </svg>
                     </div>
                   </div>
                 );

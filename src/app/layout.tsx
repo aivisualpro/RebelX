@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WizSheet - Smart Spreadsheet Solution",
+  title: "Booking Plus - Smart Booking Management Solution",
   description: "The modern, intelligent spreadsheet platform for teams and individuals",
 };
 

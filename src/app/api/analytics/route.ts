@@ -128,6 +128,7 @@ export async function GET(request: NextRequest) {
     const revenueByLocation: Record<string, number> = {};
     let bookingsWithUpsell = 0;
     let paidInFullCount = 0;
+    let bookingsWithPaymentObligation = 0; // Count of bookings with Total_Book > 0
     let totalPaidSum = 0;
     let totalDiscountSum = 0;
     let totalDueSum = 0;
@@ -165,6 +166,14 @@ export async function GET(request: NextRequest) {
       if (locationFilter && String(r[locationKey] || '').toLowerCase() !== locationFilter.toLowerCase()) continue;
       const amount = toNumber(r[totalBookKey]);
       totalRevenue += amount;
+      
+      // Count bookings with payment obligation (Total_Book > 0)
+      if (amount > 0) {
+        bookingsWithPaymentObligation += 1;
+        const due = toNumber(r[dueAmountKey]);
+        if (due === 0) paidInFullCount += 1;
+      }
+      
       if (r[clientNameKey]) distinctClients.add(String(r[clientNameKey]));
       if (r[locationKey]) {
         const loc = String(r[locationKey]);
@@ -188,7 +197,6 @@ export async function GET(request: NextRequest) {
       const upsellValue = toNumber(r[totalBookPlusKey]);
       if (upsellValue > 0) bookingsWithUpsell += 1;
       const due = toNumber(r[dueAmountKey]);
-      if (due === 0 && amount > 0) paidInFullCount += 1;
       totalDueSum += due;
       totalPaidSum += toNumber(r[totalPaidKey]);
       totalDiscountSum += toNumber(r[discountKey]);
@@ -210,10 +218,50 @@ export async function GET(request: NextRequest) {
 
     const totalBookings = records.length;
     const averageOrderValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
-    const cancellationRate = totalBookings > 0 ? ((statusCounts['Cancelled'] || statusCounts['canceled'] || 0) / totalBookings) * 100 : 0;
+    // Debug: Log all status values to see what we have
+    console.log('Status counts:', statusCounts);
+    
+    // Find canceled bookings with case-insensitive matching and various spellings
+    const canceledCount = Object.entries(statusCounts).reduce((count, [status, num]) => {
+      const statusLower = status.toLowerCase();
+      if (statusLower.includes('cancel') || statusLower.includes('cancelled') || statusLower.includes('canceled')) {
+        console.log(`Found canceled status: "${status}" with count: ${num}`);
+        return count + (num as number);
+      }
+      return count;
+    }, 0);
+    
+    console.log('Total canceled count:', canceledCount);
+    const cancellationRate = totalBookings > 0 ? (canceledCount / totalBookings) * 100 : 0;
+    console.log('Cancellation rate:', cancellationRate);
     const upsellSuccess = totalBookings > 0 ? (bookingsWithUpsell / totalBookings) * 100 : 0;
-    const paymentSuccessRate = totalBookings > 0 ? (paidInFullCount / totalBookings) * 100 : 0;
+    const paymentSuccessRate = bookingsWithPaymentObligation > 0 ? (paidInFullCount / bookingsWithPaymentObligation) * 100 : 0;
     const averageManagerRating = ratingCount > 0 ? ratingSum / ratingCount : 0;
+
+    // Calculate Business Health based on KPIs
+    const businessHealth = (() => {
+      // Weight the KPIs for overall health calculation
+      const paymentWeight = 0.4; // 40% - most important
+      const cancellationWeight = 0.3; // 30% - inverted (lower is better)
+      const upsellWeight = 0.2; // 20%
+      const ratingWeight = 0.1; // 10%
+      
+      // Normalize cancellation rate (invert it since lower is better)
+      const normalizedCancellationRate = Math.max(0, 100 - cancellationRate);
+      
+      // Normalize rating to percentage (assuming 5-star scale)
+      const normalizedRating = (averageManagerRating / 5) * 100;
+      
+      // Calculate weighted average
+      const healthScore = (
+        (paymentSuccessRate * paymentWeight) +
+        (normalizedCancellationRate * cancellationWeight) +
+        (upsellSuccess * upsellWeight) +
+        (normalizedRating * ratingWeight)
+      );
+      
+      return Math.min(100, Math.max(0, healthScore)); // Clamp between 0-100
+    })();
 
     // Prepare timeseries sorted by day
     const series = Object.entries(turnoverByDay)
@@ -241,6 +289,7 @@ export async function GET(request: NextRequest) {
         totalOutstandingDue: totalDueSum,
         uniqueArtists: distinctArtists.size,
         averageManagerRating,
+        businessHealth,
       },
       distributions: {
         statusCounts,

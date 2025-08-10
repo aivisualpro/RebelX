@@ -84,6 +84,8 @@ export default function AuthPage() {
           localStorage.setItem('allowedRegions', JSON.stringify(authResult.allowedRegions));
           // IMPORTANT: Always use first allowed region as initial
           localStorage.setItem('region', authResult.allowedRegions[0]);
+          // Store user email for access control
+          localStorage.setItem('userEmail', formData.email);
           
           // Trigger storage event to immediately update AppStateProvider
           window.dispatchEvent(new StorageEvent('storage', {
@@ -96,7 +98,14 @@ export default function AuthPage() {
           // Navigate only after success
           router.push(`/dashboard?companyId=${authResult.companyId}`);
         } catch (e: any) {
-          setError(e.message || 'Invalid email or password');
+          // Handle authentication errors gracefully
+          if (e.message === 'Invalid password') {
+            setError('Incorrect password. Please try again.');
+          } else if (e.message === 'Email not found in any region') {
+            setError('Email not found. Please check your email address.');
+          } else {
+            setError(e.message || 'Invalid email or password');
+          }
           return; // Don't rethrow - we want to stay on auth page
         }
       }

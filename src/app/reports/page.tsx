@@ -18,6 +18,22 @@ export default function ReportsPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { region, setRegion, allowedRegions } = useAppState();
   const [companyData, setCompanyData] = useState<CompanyData | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Check if current user is admin
+  useEffect(() => {
+    const checkAdminStatus = () => {
+      try {
+        const userEmail = localStorage.getItem('userEmail');
+        setIsAdmin(userEmail === 'admin@aivisualpro.com');
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+        setIsAdmin(false);
+      }
+    };
+
+    checkAdminStatus();
+  }, []);
 
   useEffect(() => {
     const run = async () => {
@@ -87,7 +103,9 @@ export default function ReportsPage() {
           {isMenuOpen && (
             <div className="absolute top-10 right-0 w-56 bg-white text-slate-800 rounded-xl shadow-xl border border-slate-200 py-2">
               <Link href="/dashboard" className="block px-4 py-2 hover:bg-slate-50">Dashboard</Link>
-              <Link href="/connections" className="block px-4 py-2 hover:bg-slate-50">Connections</Link>
+              {isAdmin && (
+                <Link href="/connections" className="block px-4 py-2 hover:bg-slate-50">Connections</Link>
+              )}
               <div className="relative group">
                 <Link href="/reports" className="block px-4 py-2 hover:bg-slate-50 flex items-center justify-between">
                   Reports
@@ -100,7 +118,7 @@ export default function ReportsPage() {
                   <a href="#services" className="block px-4 py-2 hover:bg-slate-50">Services</a>
                 </div>
               </div>
-              <Link href="/account" className="block px-4 py-2 hover:bg-slate-50">Account</Link>
+
               <button 
                 onClick={() => {
                   document.cookie = 'companyId=; Max-Age=0; path=/';

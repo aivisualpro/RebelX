@@ -27,6 +27,8 @@ export default function ConnectionsPage() {
   const [clientConnections, setClientConnections] = useState<ClientConnection[]>([]);
   const [currentTab, setCurrentTab] = useState<'clients'>('clients');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [accessChecked, setAccessChecked] = useState(false);
   const { region, setRegion, allowedRegions } = useAppState();
   
   // Modal states
@@ -39,6 +41,24 @@ export default function ConnectionsPage() {
   const [selectedDatabase, setSelectedDatabase] = useState<DatabaseType | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedClientConnection, setSelectedClientConnection] = useState<ClientConnection | null>(null);
+
+  // Check access control - only allow admin@aivisualpro.com
+  useEffect(() => {
+    const checkAccess = () => {
+      try {
+        const userEmail = localStorage.getItem('userEmail');
+        const isAdmin = userEmail === 'admin@aivisualpro.com';
+        setHasAccess(isAdmin);
+        setAccessChecked(true);
+      } catch (error) {
+        console.error('Error checking access:', error);
+        setHasAccess(false);
+        setAccessChecked(true);
+      }
+    };
+
+    checkAccess();
+  }, []);
 
   // Get companyId from URL parameters
   useEffect(() => {
@@ -170,6 +190,40 @@ export default function ConnectionsPage() {
     setSelectedClientConnection(null);
   };
 
+  // Show loading while checking access
+  if (!accessChecked) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-lg text-gray-600">Checking access...</div>
+      </div>
+    );
+  }
+
+  // Show access denied if user is not admin@aivisualpro.com
+  if (!hasAccess) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md mx-4 text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.314 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Access Restricted</h1>
+          <p className="text-slate-600 mb-6">
+            This page is only accessible to authorized administrators.
+          </p>
+          <Link 
+            href="/dashboard" 
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Return to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -196,7 +250,7 @@ export default function ConnectionsPage() {
               <div className="absolute top-10 right-0 w-56 bg-white text-slate-800 rounded-xl shadow-xl border border-slate-200 py-2">
                 <Link href={`/dashboard`} className="block px-4 py-2 hover:bg-slate-50">Dashboard</Link>
                 <Link href={`/reports`} className="block px-4 py-2 hover:bg-slate-50">Reports</Link>
-                <Link href={`/account`} className="block px-4 py-2 hover:bg-slate-50">Account</Link>
+
                 <button onClick={()=>{ document.cookie = 'companyId=; Max-Age=0; path=/'; localStorage.removeItem('region'); localStorage.removeItem('allowedRegions'); location.href='/auth'; }} className="block w-full text-left px-4 py-2 hover:bg-slate-50">Logout</button>
               </div>
             )}

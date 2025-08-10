@@ -1,4 +1,4 @@
-// Firebase Storage Security Rules for WizSheet - No Authentication
+// Firebase Storage Security Rules for Booking Plus - No Authentication
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {

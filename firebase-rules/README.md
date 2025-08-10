@@ -1,6 +1,6 @@
 # Firebase Security Rules
 
-This folder contains the security rules for Firebase services used in WizSheet.
+This folder contains the security rules for Firebase services used in Booking Plus.
 
 ## Current Rules
 
