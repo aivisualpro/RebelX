@@ -1,95 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useAppState } from '@/app/state/AppStateProvider';
 import { companyService, CompanyData } from '@/lib/auth';
 import SalesAnalyticsChart from '@/components/SalesAnalyticsChart';
+import RevenueRings from '@/components/RevenueRings';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
-import { ArrowLeft, Plus, FileSpreadsheet, Users, Settings, Menu, X, Filter } from 'lucide-react';
+import { Menu, X, Filter } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-// Mini component: animated multi-ring chart by location
-function RevenueRings({ entries, total }: { entries: Array<{ label: string; value: number; grad: [string, string] }>; total: number }) {
-  const [progress, setProgress] = useState(0);
-  useEffect(() => {
-    let raf: number;
-    const start = performance.now();
-    const duration = 900;
-    const step = (t: number) => {
-      const p = Math.min(1, (t - start) / duration);
-      setProgress(p);
-      if (p < 1) raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [entries.map(e => e.value).join(',')]);
 
-  const size = 200; const cx = size / 2; const cy = size / 2;
-  const ringOuter = 78; const ringStroke = 12; const gapBetween = 8;
-  const sum = entries.reduce((s, e) => s + e.value, 0) || 1;
-
-  const rings = entries.map((e, i) => {
-    const radius = Math.max(4, ringOuter - i * (ringStroke + gapBetween));
-    const circumference = 2 * Math.PI * radius;
-    const share = e.value / sum; // 0..1
-    const dashTarget = Math.max(2, circumference * share);
-    const dash = dashTarget * progress;
-    const gap = circumference - dash;
-    return { ...e, radius, dash, gap };
-  });
-
-  return (
-    <div className="flex flex-col items-center">
-      <svg width={size} height={size}>
-        <defs>
-          {rings.map((r, idx) => (
-            <linearGradient key={idx} id={`grad-${idx}`} x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor={r.grad[0]} />
-              <stop offset="100%" stopColor={r.grad[1]} />
-            </linearGradient>
-          ))}
-        </defs>
-        {rings.map((r, idx) => (
-          <g key={idx} transform={`rotate(-90 ${cx} ${cy})`}>
-            <circle cx={cx} cy={cy} r={r.radius} stroke="#e5e7eb" strokeWidth={ringStroke} fill="none" />
-            <circle
-              cx={cx}
-              cy={cy}
-              r={r.radius}
-              stroke={`url(#grad-${idx})`}
-              strokeWidth={ringStroke}
-              strokeDasharray={`${r.dash} ${r.gap}`}
-              strokeLinecap="round"
-              fill="none"
-              style={{ transition: 'stroke-dasharray 0.3s ease-out' }}
-            />
-          </g>
-        ))}
-        <text x={cx} y={cy+4} textAnchor="middle" dominantBaseline="middle" className="fill-slate-900" style={{ fontSize: '20px', fontWeight: 800 }}>
-          {Math.round(total * progress).toLocaleString()}
-        </text>
-      </svg>
-      <div className="mt-3 w-full space-y-1">
-        {rings.map((r, idx) => {
-          const pct = sum > 0 ? (r.value / sum) * 100 : 0;
-          return (
-            <div key={idx} className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded" style={{ background: `linear-gradient(90deg, ${r.grad[0]}, ${r.grad[1]})` }} />
-                <span className="text-slate-700">{r.label}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-slate-900 font-semibold">{Math.round(r.value).toLocaleString()}</span>
-                <span className="text-slate-500">{pct.toFixed(1)}%</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 function DashboardContent() {
   const router = useRouter();
@@ -111,7 +32,7 @@ function DashboardContent() {
     setLanguage(newLanguage);
     setIsMenuOpen(false);
   };
-  const [analytics, setAnalytics] = useState<any | null>(null);
+  const [analytics, setAnalytics] = useState<Record<string, any> | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const firstFilterFieldRef = useRef<HTMLSelectElement>(null);
   const { region, setRegion, allowedRegions, isLoading: stateLoading, refreshFromStorage } = useAppState();
@@ -200,15 +121,7 @@ function DashboardContent() {
   }, [searchParams, router]);
 
   // Filter state for the filter bar
-  const [filters, setFilters] = useState({
-    range: 'last_6_months' as 'this_month' | 'last_month' | 'last_6_months' | 'this_year' | 'all',
-    location: '',
-    bookedBy: '',
-    receptionist: '',
-    branchManager: '',
-    artist: '',
-    bookPlus: '' as '' | 'yes' | 'no',
-  });
+  const [filters, setFilters] = useState<{ range: 'this_month' | 'last_month' | 'this_year' | 'last_6_months' | 'all'; location: string; bookedBy: string; receptionist: string; branchManager: string; artist: string; bookPlus: string }>({ range: 'last_6_months', location: '', bookedBy: '', receptionist: '', branchManager: '', artist: '', bookPlus: '' });
 
   useEffect(() => {
     const readCookie = (name: string) => {
@@ -537,7 +450,7 @@ function DashboardContent() {
               {/* Date */}
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-700 w-28">Date</span>
-                <select ref={firstFilterFieldRef} value={filters.range} onChange={e => setFilters(prev => ({ ...prev, range: e.target.value as any }))} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white">
+                <select ref={firstFilterFieldRef} value={filters.range} onChange={e => setFilters(prev => ({ ...prev, range: e.target.value as 'this_month' | 'last_month' | 'this_year' | 'last_6_months' | 'all' }))} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white">
                   <option value="last_6_months">Last 6 Months</option>
                   <option value="this_month">This Month</option>
                   <option value="last_month">Last Month</option>
@@ -550,7 +463,7 @@ function DashboardContent() {
                 <span className="text-sm text-slate-700 w-28">Location</span>
                 <select value={filters.location} onChange={e => setFilters(prev => ({ ...prev, location: e.target.value }))} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white">
                   <option value="">All</option>
-                  {analytics?.options?.location?.map((v:string) => <option key={v} value={v}>{v}</option>)}
+                  {analytics?.options?.location?.map((v: string) => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
               {/* Booked By */}
@@ -558,7 +471,7 @@ function DashboardContent() {
                 <span className="text-sm text-slate-700 w-28">Booked By</span>
                 <select value={filters.bookedBy} onChange={e => setFilters(prev => ({ ...prev, bookedBy: e.target.value }))} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white">
                   <option value="">All</option>
-                  {analytics?.options?.bookedBy?.map((v:string) => <option key={v} value={v}>{v}</option>)}
+                  {analytics?.options?.bookedBy?.map((v: string) => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
               {/* Receptionist */}
@@ -1385,7 +1298,16 @@ function DashboardContent() {
 export default function Dashboard() {
   return (
     <LanguageProvider>
-      <DashboardContent />
+      <Suspense fallback={
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <div className="text-slate-600">Loading dashboard...</div>
+          </div>
+        </div>
+      }>
+        <DashboardContent />
+      </Suspense>
     </LanguageProvider>
   );
 }

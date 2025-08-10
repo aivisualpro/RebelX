@@ -169,7 +169,16 @@ export default function CreateConnectionModal({ companyId, currentClientId, curr
           {/* Project ID */}
           <div>
             <label htmlFor="projectId" className="block text-sm font-medium text-gray-700 mb-1">
-              Google Cloud Project ID
+              Google Cloud Project ID{' '}
+              <a
+                href="https://console.cloud.google.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 transition-colors"
+              >
+                Don&apos;t have a Google Cloud project? Create one at{' '}
+                <span className="underline">console.cloud.google.com</span>
+              </a>
             </label>
             <input
               type="text"

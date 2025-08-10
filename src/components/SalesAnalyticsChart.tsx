@@ -13,8 +13,6 @@ import {
 import {
   ChartConfig,
   ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
@@ -142,25 +140,10 @@ export default function SalesAnalyticsChart({ data, className = '' }: SalesAnaly
               minTickGap={32}
               tickFormatter={(value) => {
                 const date = new Date(value)
-                if (timeRange === "7d") {
-                  // For 7 days, show day and month
-                  return date.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })
-                } else if (timeRange === "30d") {
-                  // For 30 days, show day and month
-                  return date.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })
-                } else {
-                  // For 90 days, show month and day
-                  return date.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })
-                }
+                return date.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })
               }}
             />
             <ChartTooltip

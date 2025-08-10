@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Plus, Database, Users, Sparkles, Menu, X } from 'lucide-react';
 import Link from 'next/link';
@@ -17,7 +17,7 @@ import { clientConnectionService } from '@/lib/clientConnectionService';
 import { basicClientService } from '@/lib/basicClientService';
 import { Connection, Database as DatabaseType, Client, ClientConnection } from '@/lib/types';
 
-export default function ConnectionsPage() {
+function ConnectionsContent() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [companyId, setCompanyId] = useState<string>('default');
@@ -511,5 +511,20 @@ export default function ConnectionsPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function ConnectionsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="text-slate-600">Loading connections...</div>
+        </div>
+      </div>
+    }>
+      <ConnectionsContent />
+    </Suspense>
   );
 }
