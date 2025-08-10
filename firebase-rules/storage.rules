@@ -1,0 +1,10 @@
+// Firebase Storage Security Rules for WizSheet - No Authentication
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow all read/write access without authentication
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

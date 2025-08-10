@@ -1,0 +1,10 @@
+// Firestore Security Rules for WizSheet - No Authentication
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read/write access to clients collection for everyone
+    match /clients/{companyId} {
+      allow read, write: if true;
+    }
+  }
+}
