@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAppState } from '@/app/state/AppStateProvider';
+import { companyService, CompanyData } from '@/lib/auth';
+import SalesAnalyticsChart from '@/components/SalesAnalyticsChart';
+import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import { ArrowLeft, Plus, FileSpreadsheet, Users, Settings, Menu, X, Filter } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { companyService, CompanyData } from '@/lib/auth';
 
 // Mini component: animated multi-ring chart by location
 function RevenueRings({ entries, total }: { entries: Array<{ label: string; value: number; grad: [string, string] }>; total: number }) {
@@ -89,17 +91,53 @@ function RevenueRings({ entries, total }: { entries: Array<{ label: string; valu
   );
 }
 
-export default function Dashboard() {
+function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { language, setLanguage, t } = useLanguage();
   const [companyData, setCompanyData] = useState<CompanyData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [analytics, setAnalytics] = useState<any | null>(null);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  
+  // Refs for click outside detection
+  const menuRef = useRef<HTMLDivElement>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
+
+  // Handle language change
+  const handleLanguageChange = (newLanguage: 'English' | 'Arabic' | 'Egyptian') => {
+    setLanguage(newLanguage);
+    setIsMenuOpen(false);
+  };
+  const [analytics, setAnalytics] = useState<any | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const firstFilterFieldRef = useRef<HTMLSelectElement>(null);
-  const { region, setRegion, allowedRegions } = useAppState();
+  const { region, setRegion, allowedRegions, isLoading: stateLoading, refreshFromStorage } = useAppState();
+  
+  // Refresh state when component mounts to ensure latest data
+  useEffect(() => {
+    refreshFromStorage();
+  }, [refreshFromStorage]);
+
+  // Click outside to close menu and filters
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+      if (filtersRef.current && !filtersRef.current.contains(event.target as Node)) {
+        setIsFiltersOpen(false);
+      }
+    };
+
+    if (isMenuOpen || isFiltersOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen, isFiltersOpen]);
   const analyticsCache = useRef<Record<string, any>>({});
   const abortRef = useRef<AbortController | null>(null);
 
@@ -125,7 +163,7 @@ export default function Dashboard() {
 
   // Filter state for the filter bar
   const [filters, setFilters] = useState({
-    range: 'this_month' as 'this_month' | 'last_month' | 'this_year' | 'all',
+    range: 'last_6_months' as 'this_month' | 'last_month' | 'last_6_months' | 'this_year' | 'all',
     location: '',
     bookedBy: '',
     receptionist: '',
@@ -216,6 +254,7 @@ export default function Dashboard() {
     if (filters.range !== 'all') {
       let sd: Date, ed: Date;
       if (filters.range === 'this_month') { sd = new Date(now.getFullYear(), now.getMonth(), 1); ed = new Date(now.getFullYear(), now.getMonth()+1, 0); }
+      else if (filters.range === 'last_6_months') { sd = new Date(now.getFullYear(), now.getMonth() - 6, 1); ed = new Date(now.getFullYear(), now.getMonth()+1, 0); }
       else if (filters.range === 'last_month') { sd = new Date(now.getFullYear(), now.getMonth()-1, 1); ed = new Date(now.getFullYear(), now.getMonth(), 0); }
       else { sd = new Date(now.getFullYear(), 0, 1); ed = new Date(now.getFullYear(), 11, 31); }
       parts.push(`${format(sd)} → ${format(ed)}`);
@@ -233,14 +272,14 @@ export default function Dashboard() {
     router.push('/auth');
   };
 
-  if (isLoading) {
+  if (isLoading || stateLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl mx-auto flex items-center justify-center mb-4">
-            <span className="text-white font-bold text-2xl">W</span>
-          </div>
-          <p className="text-slate-600">Loading company data...</p>
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600">
+            {stateLoading ? 'Loading user preferences...' : 'Loading dashboard...'}
+          </p>
         </div>
       </div>
     );
@@ -288,8 +327,32 @@ export default function Dashboard() {
             </div>
             {/* Region Toggle */}
             <div className="hidden sm:flex items-center border border-slate-200 rounded-lg overflow-hidden">
-              <button disabled={!allowedRegions.includes('saudi1')} className={`px-3 py-1 text-sm border-r border-slate-200 ${region==='saudi1' ? 'bg-green-100 text-green-700' : 'bg-white text-slate-800 hover:bg-slate-50'} ${allowedRegions.includes('saudi1') ? '' : 'opacity-50 cursor-not-allowed'}`} onClick={()=> setRegion('saudi1')}>Saudi</button>
-              <button disabled={!allowedRegions.includes('egypt1')} className={`px-3 py-1 text-sm ${region==='egypt1' ? 'bg-green-100 text-green-700' : 'bg-white text-slate-800 hover:bg-slate-50'} ${allowedRegions.includes('egypt1') ? '' : 'opacity-50 cursor-not-allowed'}`} onClick={()=> setRegion('egypt1')}>Egypt</button>
+              <button 
+                disabled={!allowedRegions.includes('saudi1')} 
+                className={`px-3 py-1 text-sm border-r border-slate-200 transition-all duration-200 ${
+                  region === 'saudi1' 
+                    ? 'bg-green-100 text-green-700' 
+                    : allowedRegions.includes('saudi1')
+                      ? 'bg-white text-slate-800 hover:bg-slate-50' 
+                      : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`} 
+                onClick={() => setRegion('saudi1')}
+              >
+                Saudi
+              </button>
+              <button 
+                disabled={!allowedRegions.includes('egypt1')} 
+                className={`px-3 py-1 text-sm transition-all duration-200 ${
+                  region === 'egypt1' 
+                    ? 'bg-green-100 text-green-700' 
+                    : allowedRegions.includes('egypt1')
+                      ? 'bg-white text-slate-800 hover:bg-slate-50' 
+                      : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`} 
+                onClick={() => setRegion('egypt1')}
+              >
+                Egypt
+              </button>
             </div>
             {/* Active filter summary (clickable) */}
             <button
@@ -309,7 +372,13 @@ export default function Dashboard() {
               {isMenuOpen ? <X className="w-6 h-6 text-slate-700" /> : <Menu className="w-6 h-6 text-slate-700" />}
               </button>
             {isMenuOpen && (
-              <div className="absolute top-16 right-4 mt-2 w-56 bg-white text-slate-800 rounded-xl shadow-xl border border-slate-200 py-2">
+              <div 
+                ref={menuRef}
+                className="absolute top-16 right-4 mt-2 w-56 bg-white text-slate-800 rounded-xl shadow-xl border border-slate-200 py-2 animate-[slideDown_0.2s_ease-out] origin-top-right"
+                style={{
+                  animation: 'slideDown 0.2s ease-out',
+                }}
+              >
                 <Link href={`/connections?companyId=${searchParams.get('companyId')}`} className="block px-4 py-2 hover:bg-slate-50">Connections</Link>
                 <div className="group relative">
                   <button className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center justify-between">
@@ -321,6 +390,35 @@ export default function Dashboard() {
                     <Link href="/reports#services" className="block px-4 py-2 hover:bg-slate-50">Services</Link>
                   </div>
                 </div>
+                
+                {/* Language Selection */}
+                <div className="group relative">
+                  <button className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center justify-between">
+                    <span>{t('menu.language')}: {language}</span>
+                    <span>›</span>
+                  </button>
+                  <div className="hidden group-hover:block absolute top-0 right-full mr-1 w-48 bg-white border border-slate-200 rounded-xl shadow-xl py-2">
+                    <button
+                      onClick={() => handleLanguageChange('English')}
+                      className={`block w-full text-left px-4 py-2 hover:bg-slate-50 ${language === 'English' ? 'bg-blue-50 text-blue-600 font-medium' : ''}`}
+                    >
+                      English
+                    </button>
+                    <button
+                      onClick={() => handleLanguageChange('Arabic')}
+                      className={`block w-full text-left px-4 py-2 hover:bg-slate-50 ${language === 'Arabic' ? 'bg-blue-50 text-blue-600 font-medium' : ''}`}
+                    >
+                      العربية (Arabic)
+                    </button>
+                    <button
+                      onClick={() => handleLanguageChange('Egyptian')}
+                      className={`block w-full text-left px-4 py-2 hover:bg-slate-50 ${language === 'Egyptian' ? 'bg-blue-50 text-blue-600 font-medium' : ''}`}
+                    >
+                      مصري (Egyptian)
+                    </button>
+                  </div>
+                </div>
+                
                 <Link href={`/account?companyId=${searchParams.get('companyId')}`} className="block px-4 py-2 hover:bg-slate-50">Account</Link>
                 <button
                   onClick={() => { document.cookie = 'companyId=; Max-Age=0; path=/'; localStorage.removeItem('region'); router.push('/auth'); }}
@@ -338,9 +436,12 @@ export default function Dashboard() {
         {isFiltersOpen && (
           <div className="fixed inset-0 z-40">
             {/* overlay */}
-            <div className="absolute inset-0 bg-black/30" onClick={() => { setIsFiltersOpen(false); setTimeout(() => filterButtonRef.current?.focus(), 0); }}></div>
+            <div className="absolute inset-0 bg-black/30 animate-[fadeIn_0.2s_ease-out]" onClick={() => { setIsFiltersOpen(false); setTimeout(() => filterButtonRef.current?.focus(), 0); }}></div>
             {/* panel */}
-            <div className="absolute top-0 right-0 h-full w-full sm:w-[520px] bg-white shadow-xl border-l border-slate-200 animate-[slideIn_.2s_ease-out]">
+            <div 
+              ref={filtersRef}
+              className="absolute top-0 right-0 h-full w-full sm:w-[520px] bg-white shadow-xl border-l border-slate-200 animate-[slideInRight_0.3s_ease-out]"
+            >
             <div className="flex items-center justify-between p-4 border-b border-slate-200">
               <div className="flex items-center gap-2 text-slate-900 font-semibold"><Filter className="w-4 h-4" /> Filters</div>
               <button className="p-2 rounded-lg hover:bg-slate-100" onClick={() => { setIsFiltersOpen(false); setTimeout(() => filterButtonRef.current?.focus(), 0); }} aria-label="Close filters"><X className="w-5 h-5" /></button>
@@ -350,6 +451,7 @@ export default function Dashboard() {
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-700 w-28">Date</span>
                 <select ref={firstFilterFieldRef} value={filters.range} onChange={e => setFilters(prev => ({ ...prev, range: e.target.value as any }))} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white">
+                  <option value="last_6_months">Last 6 Months</option>
                   <option value="this_month">This Month</option>
                   <option value="last_month">Last Month</option>
                   <option value="this_year">This Year</option>
@@ -407,19 +509,19 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="p-4 border-t border-slate-200 flex items-center gap-3">
-              <button onClick={() => setFilters({ range: 'this_month', location: '', bookedBy: '', receptionist: '', branchManager: '', artist: '', bookPlus: '' })} className="px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50">Reset</button>
+              <button onClick={() => setFilters({ range: 'last_6_months', location: '', bookedBy: '', receptionist: '', branchManager: '', artist: '', bookPlus: '' })} className="px-3 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50">Reset</button>
               <button onClick={() => { setIsFiltersOpen(false); setTimeout(() => filterButtonRef.current?.focus(), 0); }} className="ml-auto px-3 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-800">Apply</button>
             </div>
           </div>
           </div>
         )}
-        {/* KPI Row */}
+        {/* First Row: Total Sales (SAR) + Enhanced Sales Analytics Chart */}
         {analytics && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             {/* Total Revenue Animated Rings by Location */}
             <div className="bg-gradient-to-b from-white to-slate-50 rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col items-center justify-center">
               <div className="w-full flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-slate-700">Total Sales (SAR)</span>
+                <span className="text-sm font-semibold text-slate-700">{t('dashboard.totalSales')}</span>
               </div>
               {(() => {
                 const total = Number(analytics?.kpis?.totalRevenue ?? 0);
@@ -438,22 +540,78 @@ export default function Dashboard() {
                 return <RevenueRings entries={prepared} total={total} />;
               })()}
             </div>
+
+            {/* Enhanced Sales Analytics Chart - spans 2 columns */}
+            <div className="lg:col-span-2">
+              <SalesAnalyticsChart 
+                data={(() => {
+                  // Use real Total_Book data from analytics
+                  const generateRealSalesData = () => {
+                    const data = [];
+                    
+                    // Check if we have turnover series data (which should include Total_Book)
+                    const turnoverSeries = analytics.turnoverSeries as Array<{date: string, value: number}>;
+                    
+                    if (turnoverSeries && turnoverSeries.length > 0) {
+                      // Use real data from turnover series
+                      return turnoverSeries.map(item => ({
+                        date: item.date,
+                        total: item.value,
+                        locations: {} // Not needed for single line chart
+                      }));
+                    } else {
+                      // No real sales data available - return empty data or minimal data points
+                      // This prevents showing fake sales when there are none
+                      const baseDate = new Date();
+                      
+                      // Create minimal data points with zero values to show empty chart
+                      for (let i = 179; i >= 0; i--) {
+                        const date = new Date(baseDate);
+                        date.setDate(date.getDate() - i);
+                        
+                        data.push({
+                          date: date.toISOString().split('T')[0],
+                          total: 0, // Show zero sales when no real data exists
+                          locations: {}
+                        });
+                      }
+                      
+                      return data;
+                    }
+                  };
+                  
+                  return generateRealSalesData();
+                })()}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Second Row: Other KPI Cards */}
+        {analytics && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <div className="text-slate-500 text-sm">Unique Clients</div>
+              <div className="text-slate-500 text-sm">{t('dashboard.uniqueClients')}</div>
               <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.kpis.uniqueClients}</div>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <div className="text-slate-500 text-sm">Total Locations</div>
+              <div className="text-slate-500 text-sm">{t('dashboard.totalLocations')}</div>
               <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.kpis.totalLocations}</div>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <div className="text-slate-500 text-sm">Channels</div>
+              <div className="text-slate-500 text-sm">{t('dashboard.channels')}</div>
               <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.kpis.acquisitionChannels}</div>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <div className="text-slate-500 text-sm">Booking Types</div>
+              <div className="text-slate-500 text-sm">{t('dashboard.bookingTypes')}</div>
               <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.kpis.bookingTypes}</div>
             </div>
+          </div>
+        )}
+
+        {/* Third Row: Additional KPI Cards */}
+        {analytics && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
               <div className="text-slate-500 text-sm">Total Paid</div>
               <div className="text-2xl font-bold text-slate-900 mt-2">{Math.round(analytics.kpis.totalPaid).toLocaleString()} SAR</div>
@@ -470,16 +628,135 @@ export default function Dashboard() {
               <div className="text-slate-500 text-sm">Artists</div>
               <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.kpis.uniqueArtists}</div>
             </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <div className="text-slate-500 text-sm">Avg. Manager Rating</div>
-              <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.kpis.averageManagerRating.toFixed(2)}</div>
+          </div>
+        )}
+
+        {/* Fourth Row: Performance KPI Cards - Light Theme */}
+        {analytics && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {/* Payment Success Rate */}
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-2xl shadow-sm border border-blue-200/60 p-6 relative overflow-hidden">
+              <div className="absolute top-3 right-3">
+                <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-blue-900">Payment Success Rate</div>
+                  <div className="text-xs text-blue-600">Target: {'>'}90%</div>
+                </div>
+              </div>
+              <div className="text-3xl font-bold text-blue-900 mb-3">{analytics.kpis.paymentSuccessRate.toFixed(2)}%</div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-blue-700">
+                  {analytics.kpis.paymentSuccessRate >= 90 ? 'Good' : analytics.kpis.paymentSuccessRate >= 80 ? 'Fair' : 'Needs Improvement'}
+                </span>
+              </div>
+              <div className="w-full bg-blue-200/50 rounded-full h-2">
+                <div 
+                  className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-1000 ease-out"
+                  style={{ width: `${Math.min(analytics.kpis.paymentSuccessRate, 100)}%` }}
+                ></div>
+              </div>
+            </div>
+
+            {/* Average Order Value */}
+            <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 rounded-2xl shadow-sm border border-amber-200/60 p-6 relative overflow-hidden">
+              <div className="absolute top-3 right-3">
+                <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-amber-900">Average Order Value</div>
+                  <div className="text-xs text-amber-600">Target: {'>'}250 SAR</div>
+                </div>
+              </div>
+              <div className="text-3xl font-bold text-amber-900 mb-3">{Math.round(analytics.kpis.averageOrderValue)} SAR</div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-amber-700">
+                  {analytics.kpis.averageOrderValue >= 250 ? 'Good' : analytics.kpis.averageOrderValue >= 200 ? 'Fair' : 'Warning'}
+                </span>
+              </div>
+              <div className="w-full bg-amber-200/50 rounded-full h-2">
+                <div 
+                  className="bg-gradient-to-r from-amber-500 to-amber-600 h-2 rounded-full transition-all duration-1000 ease-out"
+                  style={{ width: `${Math.min((analytics.kpis.averageOrderValue / 500) * 100, 100)}%` }}
+                ></div>
+              </div>
+            </div>
+
+            {/* Cancellation Rate */}
+            <div className="bg-gradient-to-br from-slate-50 to-slate-100/50 rounded-2xl shadow-sm border border-slate-200/60 p-6 relative overflow-hidden">
+              <div className="absolute top-3 right-3">
+                <div className="w-3 h-3 bg-slate-500 rounded-full"></div>
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 bg-slate-500/10 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-slate-900">Cancellation Rate</div>
+                  <div className="text-xs text-slate-600">Target: {'<'}5%</div>
+                </div>
+              </div>
+              <div className="text-3xl font-bold text-slate-900 mb-3">{analytics.kpis.cancellationRate.toFixed(2)}%</div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-slate-700">
+                  {analytics.kpis.cancellationRate <= 5 ? 'Good' : analytics.kpis.cancellationRate <= 10 ? 'Fair' : 'High'}
+                </span>
+              </div>
+              <div className="w-full bg-slate-200/50 rounded-full h-2">
+                <div 
+                  className="bg-gradient-to-r from-slate-500 to-slate-600 h-2 rounded-full transition-all duration-1000 ease-out"
+                  style={{ width: `${Math.min(analytics.kpis.cancellationRate * 2, 100)}%` }}
+                ></div>
+              </div>
+            </div>
+
+            {/* Up-selling Success */}
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-2xl shadow-sm border border-emerald-200/60 p-6 relative overflow-hidden">
+              <div className="absolute top-3 right-3">
+                <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-emerald-900">Up-selling Success</div>
+                  <div className="text-xs text-emerald-600">Target: {'>'}25%</div>
+                </div>
+              </div>
+              <div className="text-3xl font-bold text-emerald-900 mb-3">{analytics.kpis.upsellSuccess.toFixed(2)}%</div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-emerald-700">
+                  {analytics.kpis.upsellSuccess >= 25 ? 'Good' : analytics.kpis.upsellSuccess >= 15 ? 'Fair' : 'Low'}
+                </span>
+              </div>
+              <div className="w-full bg-emerald-200/50 rounded-full h-2">
+                <div 
+                  className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-2 rounded-full transition-all duration-1000 ease-out"
+                  style={{ width: `${Math.min((analytics.kpis.upsellSuccess / 50) * 100, 100)}%` }}
+                ></div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Company info removed as requested */}
 
-        
 
         {/* Analytics Blocks */}
         {analytics && (
@@ -498,62 +775,184 @@ export default function Dashboard() {
               <div className="mt-4 text-slate-500 text-sm">Up-selling Success: <span className="font-semibold text-slate-900">{analytics.kpis.upsellSuccess.toFixed(2)}%</span></div>
             </div>
 
-            {/* Payment breakdown */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-              <div className="text-slate-500 text-sm mb-2">Payment Breakdown</div>
-              <div className="space-y-2">
-                {Object.entries(analytics.distributions.paymentSums).map(([method, amount]) => (
-                  <div key={method} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600">{method.replace(/_/g,' ')}</span>
-                    <span className="text-slate-900 font-medium">{Math.round(Number(amount)).toLocaleString()} SAR</span>
-                  </div>
-                ))}
+            {/* Payment Breakdown - Cool Pie Chart */}
+            <div className="bg-gradient-to-br from-slate-50 to-white rounded-2xl shadow-lg border border-slate-200/60 p-6 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
+              <div className="text-slate-900 font-semibold mb-6 flex items-center gap-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+                Payment Breakdown
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Donuts and Bars */}
-        {analytics && (
-          <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Channels Donut */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-              <div className="text-slate-900 font-semibold mb-4">Acquisition Channels</div>
               {(() => {
-                const entries = Object.entries(analytics.distributions.channelCounts);
-                const total = entries.reduce((s, [,v]) => s + v as number, 0);
-                if (total === 0) return <div className="text-slate-500 text-sm">No data</div>;
-                // Simple donut with cumulative arcs
-                const size = 180; const radius = 70; const cx = size/2; const cy = size/2; const stroke = 24;
-                let startAngle = -Math.PI / 2; // start at top
-                const colors = ['#2563eb','#16a34a','#f59e0b','#ef4444','#06b6d4','#8b5cf6','#84cc16'];
-                const arcs = entries.map(([label, value], i) => {
-                  const angle = (Number(value)/total) * Math.PI * 2;
+                const entries = Object.entries(analytics.distributions.paymentSums);
+                const total = entries.reduce((s, [,v]) => s + Number(v), 0);
+                if (total === 0) return <div className="text-slate-500 text-sm">No payment data</div>;
+                
+                // Light, beautiful colors for payment methods
+                const colors = [
+                  { main: '#3b82f6', light: '#dbeafe', shadow: '#1e40af' }, // Blue - cash
+                  { main: '#10b981', light: '#d1fae5', shadow: '#047857' }, // Emerald - mada
+                  { main: '#f59e0b', light: '#fef3c7', shadow: '#d97706' }, // Amber - tabby
+                  { main: '#ef4444', light: '#fee2e2', shadow: '#dc2626' }, // Red - tamara
+                  { main: '#8b5cf6', light: '#ede9fe', shadow: '#7c3aed' }, // Violet - bank transfer
+                  { main: '#06b6d4', light: '#cffafe', shadow: '#0891b2' }, // Cyan - other
+                ];
+                
+                const size = 240;
+                const radius = 90;
+                const cx = size / 2;
+                const cy = size / 2;
+                const innerRadius = 35;
+                
+                let startAngle = -Math.PI / 2;
+                const segments = entries.map(([method, amount], i) => {
+                  const value = Number(amount);
+                  const angle = (value / total) * Math.PI * 2;
                   const endAngle = startAngle + angle;
+                  const percentage = (value / total) * 100;
+                  
+                  // Create 3D effect with multiple paths
+                  const outerX1 = cx + radius * Math.cos(startAngle);
+                  const outerY1 = cy + radius * Math.sin(startAngle);
+                  const outerX2 = cx + radius * Math.cos(endAngle);
+                  const outerY2 = cy + radius * Math.sin(endAngle);
+                  
+                  const innerX1 = cx + innerRadius * Math.cos(startAngle);
+                  const innerY1 = cy + innerRadius * Math.sin(startAngle);
+                  const innerX2 = cx + innerRadius * Math.cos(endAngle);
+                  const innerY2 = cy + innerRadius * Math.sin(endAngle);
+                  
                   const largeArc = angle > Math.PI ? 1 : 0;
-                  const x1 = cx + radius * Math.cos(startAngle);
-                  const y1 = cy + radius * Math.sin(startAngle);
-                  const x2 = cx + radius * Math.cos(endAngle);
-                  const y2 = cy + radius * Math.sin(endAngle);
-                  const d = `M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`;
+                  
+                  // Main segment path
+                  const mainPath = [
+                    `M ${innerX1} ${innerY1}`,
+                    `L ${outerX1} ${outerY1}`,
+                    `A ${radius} ${radius} 0 ${largeArc} 1 ${outerX2} ${outerY2}`,
+                    `L ${innerX2} ${innerY2}`,
+                    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerX1} ${innerY1}`,
+                    'Z'
+                  ].join(' ');
+                  
+                  // Shadow path (slightly offset)
+                  const shadowOffset = 3;
+                  const shadowPath = [
+                    `M ${innerX1 + shadowOffset} ${innerY1 + shadowOffset}`,
+                    `L ${outerX1 + shadowOffset} ${outerY1 + shadowOffset}`,
+                    `A ${radius} ${radius} 0 ${largeArc} 1 ${outerX2 + shadowOffset} ${outerY2 + shadowOffset}`,
+                    `L ${innerX2 + shadowOffset} ${innerY2 + shadowOffset}`,
+                    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerX1 + shadowOffset} ${innerY1 + shadowOffset}`,
+                    'Z'
+                  ].join(' ');
+                  
                   startAngle = endAngle;
-                  return { d, color: colors[i % colors.length], label, value };
+                  
+                  return {
+                    method: method.replace(/_/g, ' '),
+                    amount: value,
+                    percentage,
+                    color: colors[i % colors.length],
+                    mainPath,
+                    shadowPath
+                  };
                 });
+                
                 return (
-                  <div className="flex items-center gap-6">
-                    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-                      <circle cx={cx} cy={cy} r={radius} stroke="#e5e7eb" strokeWidth={stroke} fill="none" />
-                      {arcs.map((a, idx) => (
-                        <path key={idx} d={a.d} stroke={a.color} strokeWidth={stroke} fill="none" strokeLinecap="butt" />
-                      ))}
-                      <circle cx={cx} cy={cy} r={radius - stroke/2} fill="white" />
-                    </svg>
-                    <div className="space-y-2 text-sm">
-                      {arcs.map((a, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <span className="w-3 h-3 rounded-sm" style={{ background: a.color }} />
-                          <span className="text-slate-700">{a.label}</span>
-                          <span className="ml-auto text-slate-900 font-medium">{Math.round((Number(a.value)/total)*100)}%</span>
+                  <div className="flex items-center justify-center gap-8">
+                    <div className="relative">
+                      <svg width={size + 10} height={size + 10} viewBox={`0 0 ${size + 10} ${size + 10}`} className="drop-shadow-lg">
+                        {/* Shadow segments */}
+                        {segments.map((segment, idx) => (
+                          <path
+                            key={`shadow-${idx}`}
+                            d={segment.shadowPath}
+                            fill="rgba(0,0,0,0.1)"
+                            className="blur-sm"
+                          />
+                        ))}
+                        
+                        {/* Main segments with gradient */}
+                        {segments.map((segment, idx) => (
+                          <g key={idx}>
+                            <defs>
+                              <radialGradient id={`gradient-${idx}`} cx="0.3" cy="0.3">
+                                <stop offset="0%" stopColor={segment.color.light} />
+                                <stop offset="70%" stopColor={segment.color.main} />
+                                <stop offset="100%" stopColor={segment.color.shadow} />
+                              </radialGradient>
+                            </defs>
+                            <path
+                              d={segment.mainPath}
+                              fill={`url(#gradient-${idx})`}
+                              stroke="white"
+                              strokeWidth="2"
+                              className="transition-all duration-300 hover:scale-105 hover:brightness-110 cursor-pointer"
+                              style={{
+                                filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))',
+                                transformOrigin: `${cx}px ${cy}px`
+                              }}
+                            />
+                          </g>
+                        ))}
+                        
+                        {/* Center circle with gradient */}
+                        <defs>
+                          <radialGradient id="centerGradient">
+                            <stop offset="0%" stopColor="#ffffff" />
+                            <stop offset="100%" stopColor="#f8fafc" />
+                          </radialGradient>
+                        </defs>
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={innerRadius}
+                          fill="url(#centerGradient)"
+                          stroke="#e2e8f0"
+                          strokeWidth="2"
+                          style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
+                        />
+                        
+                        {/* Center text */}
+                        <text x={cx} y={cy - 5} textAnchor="middle" className="fill-slate-600 text-xs font-medium">
+                          Total
+                        </text>
+                        <text x={cx} y={cy + 8} textAnchor="middle" className="fill-slate-900 text-sm font-bold">
+                          {Math.round(total).toLocaleString()}
+                        </text>
+                        <text x={cx} y={cy + 20} textAnchor="middle" className="fill-slate-500 text-xs">
+                          SAR
+                        </text>
+                      </svg>
+                    </div>
+                    
+                    {/* Legend with enhanced styling */}
+                    <div className="space-y-3">
+                      {segments.map((segment, idx) => (
+                        <div key={idx} className="flex items-center gap-3 group cursor-pointer hover:bg-slate-50 rounded-lg p-2 transition-all duration-200">
+                          <div 
+                            className="w-4 h-4 rounded-full shadow-sm border-2 border-white"
+                            style={{ 
+                              background: `linear-gradient(135deg, ${segment.color.light} 0%, ${segment.color.main} 50%, ${segment.color.shadow} 100%)`,
+                              boxShadow: `0 2px 4px ${segment.color.main}40`
+                            }}
+                          />
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-slate-700 capitalize group-hover:text-slate-900 transition-colors">
+                              {segment.method}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {segment.percentage.toFixed(1)}%
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-bold text-slate-900">
+                              {Math.round(segment.amount).toLocaleString()}
+                            </div>
+                            <div className="text-xs text-slate-500">SAR</div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -561,43 +960,245 @@ export default function Dashboard() {
                 );
               })()}
             </div>
+          </div>
+        )}
 
-            {/* Booking Types Donut */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-              <div className="text-slate-900 font-semibold mb-4">Booking Types</div>
+        {/* Donuts and Bars */}
+        {analytics && (
+          <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Acquisition Channels - Cool 3D Pie Chart */}
+            <div className="bg-gradient-to-br from-emerald-50 to-white rounded-2xl shadow-lg border border-emerald-200/60 p-6 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500"></div>
+              <div className="text-slate-900 font-semibold mb-6 flex items-center gap-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                </div>
+                Acquisition Channels
+              </div>
               {(() => {
-                const entries = Object.entries(analytics.distributions.typeCounts);
-                const total = entries.reduce((s, [,v]) => s + v as number, 0);
+                const entries = Object.entries(analytics.distributions.channelCounts);
+                const total = entries.reduce((s, [,v]) => s + (v as number), 0);
                 if (total === 0) return <div className="text-slate-500 text-sm">No data</div>;
-                const size = 180; const radius = 70; const cx = size/2; const cy = size/2; const stroke = 24;
-                let startAngle = -Math.PI / 2; const colors = ['#9333ea','#0ea5e9','#10b981','#f43f5e','#f59e0b','#22c55e'];
-                const arcs = entries.map(([label, value], i) => {
-                  const angle = (Number(value)/total) * Math.PI * 2;
+                
+                // Beautiful light colors with 3D effect
+                const colors = [
+                  { main: '#10b981', light: '#a7f3d0', shadow: '#047857', glow: '#10b98140' }, // Emerald
+                  { main: '#3b82f6', light: '#bfdbfe', shadow: '#1e40af', glow: '#3b82f640' }, // Blue  
+                  { main: '#f59e0b', light: '#fed7aa', shadow: '#d97706', glow: '#f59e0b40' }, // Amber
+                  { main: '#ef4444', light: '#fecaca', shadow: '#dc2626', glow: '#ef444440' }, // Red
+                  { main: '#8b5cf6', light: '#ddd6fe', shadow: '#7c3aed', glow: '#8b5cf640' }, // Violet
+                  { main: '#06b6d4', light: '#a5f3fc', shadow: '#0891b2', glow: '#06b6d440' }, // Cyan
+                  { main: '#84cc16', light: '#d9f99d', shadow: '#65a30d', glow: '#84cc1640' }, // Lime
+                ];
+                
+                const size = 280;
+                const radius = 100;
+                const cx = size / 2;
+                const cy = size / 2;
+                const innerRadius = 40;
+                const depth = 8; // 3D depth effect
+                
+                let startAngle = -Math.PI / 2;
+                const segments = entries.map(([label, value], i) => {
+                  const numValue = Number(value);
+                  const angle = (numValue / total) * Math.PI * 2;
                   const endAngle = startAngle + angle;
+                  const percentage = (numValue / total) * 100;
+                  
+                  // Calculate points for 3D effect
+                  const outerX1 = cx + radius * Math.cos(startAngle);
+                  const outerY1 = cy + radius * Math.sin(startAngle);
+                  const outerX2 = cx + radius * Math.cos(endAngle);
+                  const outerY2 = cy + radius * Math.sin(endAngle);
+                  
+                  const innerX1 = cx + innerRadius * Math.cos(startAngle);
+                  const innerY1 = cy + innerRadius * Math.sin(startAngle);
+                  const innerX2 = cx + innerRadius * Math.cos(endAngle);
+                  const innerY2 = cy + innerRadius * Math.sin(endAngle);
+                  
                   const largeArc = angle > Math.PI ? 1 : 0;
-                  const x1 = cx + radius * Math.cos(startAngle);
-                  const y1 = cy + radius * Math.sin(startAngle);
-                  const x2 = cx + radius * Math.cos(endAngle);
-                  const y2 = cy + radius * Math.sin(endAngle);
-                  const d = `M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`;
+                  
+                  // Top surface path
+                  const topPath = [
+                    `M ${innerX1} ${innerY1}`,
+                    `L ${outerX1} ${outerY1}`,
+                    `A ${radius} ${radius} 0 ${largeArc} 1 ${outerX2} ${outerY2}`,
+                    `L ${innerX2} ${innerY2}`,
+                    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerX1} ${innerY1}`,
+                    'Z'
+                  ].join(' ');
+                  
+                  // Side surface paths for 3D effect
+                  const sideOuterPath = [
+                    `M ${outerX1} ${outerY1}`,
+                    `L ${outerX1} ${outerY1 + depth}`,
+                    `A ${radius} ${radius} 0 ${largeArc} 1 ${outerX2} ${outerY2 + depth}`,
+                    `L ${outerX2} ${outerY2}`,
+                    `A ${radius} ${radius} 0 ${largeArc} 0 ${outerX1} ${outerY1}`,
+                    'Z'
+                  ].join(' ');
+                  
+                  const sideInnerPath = [
+                    `M ${innerX1} ${innerY1}`,
+                    `L ${innerX1} ${innerY1 + depth}`,
+                    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 1 ${innerX2} ${innerY2 + depth}`,
+                    `L ${innerX2} ${innerY2}`,
+                    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerX1} ${innerY1}`,
+                    'Z'
+                  ].join(' ');
+                  
                   startAngle = endAngle;
-                  return { d, color: colors[i % colors.length], label, value };
+                  
+                  return {
+                    label,
+                    value: numValue,
+                    percentage,
+                    color: colors[i % colors.length],
+                    topPath,
+                    sideOuterPath,
+                    sideInnerPath
+                  };
                 });
+                
                 return (
-                  <div className="flex items-center gap-6">
-                    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-                      <circle cx={cx} cy={cy} r={radius} stroke="#e5e7eb" strokeWidth={stroke} fill="none" />
-                      {arcs.map((a, idx) => (
-                        <path key={idx} d={a.d} stroke={a.color} strokeWidth={stroke} fill="none" strokeLinecap="butt" />
-                      ))}
-                      <circle cx={cx} cy={cy} r={radius - stroke/2} fill="white" />
-                    </svg>
-                    <div className="space-y-2 text-sm">
-                      {arcs.map((a, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <span className="w-3 h-3 rounded-sm" style={{ background: a.color }} />
-                          <span className="text-slate-700">{a.label}</span>
-                          <span className="ml-auto text-slate-900 font-medium">{Math.round((Number(a.value)/total)*100)}%</span>
+                  <div className="flex items-center justify-center gap-8">
+                    <div className="relative">
+                      <svg width={size + 20} height={size + 20} viewBox={`0 0 ${size + 20} ${size + 20}`} className="drop-shadow-2xl">
+                        {/* Glow effect */}
+                        <defs>
+                          <filter id="glow">
+                            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                            <feMerge> 
+                              <feMergeNode in="coloredBlur"/>
+                              <feMergeNode in="SourceGraphic"/>
+                            </feMerge>
+                          </filter>
+                        </defs>
+                        
+                        {/* Bottom shadow */}
+                        <ellipse 
+                          cx={cx + 10} 
+                          cy={cy + depth + 15} 
+                          rx={radius + 5} 
+                          ry={20} 
+                          fill="rgba(0,0,0,0.1)" 
+                          className="blur-sm"
+                        />
+                        
+                        {/* 3D side surfaces (darker) */}
+                        {segments.map((segment, idx) => (
+                          <g key={`side-${idx}`}>
+                            <path
+                              d={segment.sideOuterPath}
+                              fill={segment.color.shadow}
+                              opacity="0.8"
+                            />
+                            <path
+                              d={segment.sideInnerPath}
+                              fill={segment.color.shadow}
+                              opacity="0.6"
+                            />
+                          </g>
+                        ))}
+                        
+                        {/* Top surfaces with gradients and glow */}
+                        {segments.map((segment, idx) => (
+                          <g key={`top-${idx}`}>
+                            <defs>
+                              <radialGradient id={`channel-gradient-${idx}`} cx="0.3" cy="0.3">
+                                <stop offset="0%" stopColor={segment.color.light} />
+                                <stop offset="50%" stopColor={segment.color.main} />
+                                <stop offset="100%" stopColor={segment.color.shadow} />
+                              </radialGradient>
+                              <filter id={`channel-glow-${idx}`}>
+                                <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor={segment.color.glow}/>
+                              </filter>
+                            </defs>
+                            <path
+                              d={segment.topPath}
+                              fill={`url(#channel-gradient-${idx})`}
+                              stroke="white"
+                              strokeWidth="2"
+                              filter={`url(#channel-glow-${idx})`}
+                              className="transition-all duration-500 hover:scale-105 hover:brightness-110 cursor-pointer"
+                              style={{
+                                transformOrigin: `${cx}px ${cy}px`,
+                              }}
+                            />
+                          </g>
+                        ))}
+                        
+                        {/* Center circle with 3D effect */}
+                        <defs>
+                          <radialGradient id="centerGradient3D">
+                            <stop offset="0%" stopColor="#ffffff" />
+                            <stop offset="70%" stopColor="#f1f5f9" />
+                            <stop offset="100%" stopColor="#e2e8f0" />
+                          </radialGradient>
+                        </defs>
+                        
+                        {/* Center shadow */}
+                        <ellipse
+                          cx={cx}
+                          cy={cy + depth}
+                          rx={innerRadius}
+                          ry={innerRadius}
+                          fill="rgba(0,0,0,0.2)"
+                        />
+                        
+                        {/* Center circle */}
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={innerRadius}
+                          fill="url(#centerGradient3D)"
+                          stroke="#cbd5e1"
+                          strokeWidth="2"
+                          style={{ filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))' }}
+                        />
+                        
+                        {/* Center text */}
+                        <text x={cx} y={cy - 8} textAnchor="middle" className="fill-slate-600 text-xs font-medium">
+                          Total
+                        </text>
+                        <text x={cx} y={cy + 4} textAnchor="middle" className="fill-slate-900 text-lg font-bold">
+                          {total.toLocaleString()}
+                        </text>
+                        <text x={cx} y={cy + 18} textAnchor="middle" className="fill-slate-500 text-xs">
+                          Channels
+                        </text>
+                      </svg>
+                    </div>
+                    
+                    {/* Enhanced Legend */}
+                    <div className="space-y-3">
+                      {segments.map((segment, idx) => (
+                        <div key={idx} className="flex items-center gap-3 group cursor-pointer hover:bg-white/60 rounded-xl p-3 transition-all duration-300 hover:shadow-md">
+                          <div 
+                            className="w-5 h-5 rounded-lg shadow-lg border-2 border-white relative"
+                            style={{ 
+                              background: `linear-gradient(135deg, ${segment.color.light} 0%, ${segment.color.main} 50%, ${segment.color.shadow} 100%)`,
+                              boxShadow: `0 4px 8px ${segment.color.glow}, inset 0 1px 0 rgba(255,255,255,0.3)`
+                            }}
+                          >
+                            <div 
+                              className="absolute inset-0 rounded-lg"
+                              style={{
+                                background: `linear-gradient(145deg, transparent 40%, ${segment.color.shadow}20 100%)`
+                              }}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-sm font-semibold text-slate-800 group-hover:text-slate-900 transition-colors capitalize">
+                              {segment.label}
+                            </div>
+                            <div className="text-xs text-slate-500 font-medium">
+                              {segment.percentage.toFixed(1)}% • {segment.value.toLocaleString()} users
+                            </div>
+                          </div>
+                          <div className="w-8 h-1 rounded-full" style={{ backgroundColor: segment.color.main }} />
                         </div>
                       ))}
                     </div>
@@ -616,7 +1217,7 @@ export default function Dashboard() {
               <div className="text-slate-900 font-semibold mb-4">Booking Status</div>
               {(() => {
                 const entries = Object.entries(analytics.distributions.statusCounts);
-                const total = entries.reduce((s, [,v]) => s + v as number, 0);
+                const total = entries.reduce((s, [,v]) => s + (v as number), 0);
                 if (total === 0) return <div className="text-slate-500 text-sm">No data</div>;
                 const colors = ['#16a34a','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#06b6d4'];
                 return (
@@ -640,59 +1241,18 @@ export default function Dashboard() {
               })()}
             </div>
 
-            {/* Location-wise revenue horizontal bar */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-              <div className="text-slate-900 font-semibold mb-4">Revenue by Location</div>
-              {(() => {
-                const entries = Object.entries(analytics.distributions.revenueByLocation).sort((a,b)=>Number(b[1])-Number(a[1])).slice(0,8);
-                if (entries.length === 0) return <div className="text-slate-500 text-sm">No data</div>;
-                const max = Math.max(...entries.map(([,v]) => Number(v)));
-                return (
-                  <div className="space-y-2">
-                    {entries.map(([label, value]) => (
-                      <div key={label} className="flex items-center gap-3">
-                        <div className="text-sm text-slate-700 w-32 truncate" title={label}>{label}</div>
-                        <div className="flex-1 h-3 rounded bg-slate-200 overflow-hidden">
-                          <div className="h-3 bg-blue-600" style={{ width: `${(Number(value)/max)*100}%` }} />
-                        </div>
-                        <div className="text-sm text-slate-900 font-medium w-24 text-right">{Math.round(Number(value)).toLocaleString()} SAR</div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
+            
           </div>
-        )}
-
-        {/* Turnover Trend */}
-        {analytics && (
-          <div className="mt-8 bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-            <div className="text-slate-900 font-semibold mb-4">Turnover Activity</div>
-            <div className="w-full overflow-x-auto">
-              <div className="min-w-[600px] h-40 relative">
-                {/* Simple sparkline without external libs */}
-                {(() => {
-                  const series = analytics.turnoverSeries as Array<{date:string, value:number}>;
-                  if (!series || series.length === 0) return <div className="text-slate-500 text-sm">No data</div>;
-                  const max = Math.max(...series.map(p => p.value));
-                  const width = 600; const height = 160; const step = Math.max(1, Math.floor(width / series.length));
-                  const points = series.map((p, i) => {
-                    const x = i * step;
-                    const y = height - (max > 0 ? (p.value / max) * height : 0);
-                    return `${x},${y}`;
-                  }).join(' ');
-                  return (
-                    <svg width={width} height={height} className="text-blue-600">
-                      <polyline fill="none" stroke="currentColor" strokeWidth="2" points={points} />
-                    </svg>
-                  );
-                })()}
-              </div>
-            </div>
-        </div>
         )}
       </main>
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <LanguageProvider>
+      <DashboardContent />
+    </LanguageProvider>
   );
 }

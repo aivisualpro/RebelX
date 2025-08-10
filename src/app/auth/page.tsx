@@ -84,6 +84,15 @@ export default function AuthPage() {
           localStorage.setItem('allowedRegions', JSON.stringify(authResult.allowedRegions));
           // IMPORTANT: Always use first allowed region as initial
           localStorage.setItem('region', authResult.allowedRegions[0]);
+          
+          // Trigger storage event to immediately update AppStateProvider
+          window.dispatchEvent(new StorageEvent('storage', {
+            key: 'allowedRegions',
+            newValue: JSON.stringify(authResult.allowedRegions),
+            oldValue: null,
+            storageArea: localStorage
+          }));
+          
           // Navigate only after success
           router.push(`/dashboard?companyId=${authResult.companyId}`);
         } catch (e: any) {

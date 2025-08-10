@@ -128,33 +128,45 @@ class CompanyService {
       const clientId = 'booking-plus';
       const connections = ['saudi1', 'egypt1'];
       const allowedRegions: Array<'saudi1' | 'egypt1'> = [];
-      // Determine region access by email presence
+      
+      // STEP 1: First, determine ALL regions where this email exists
       for (const connectionId of connections) {
         const usersRef = collection(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs', 'user_manager', 'records');
         // Try exact field queries first
         const q1 = query(usersRef, where('email', '==', credentials.email));
         const q2 = query(usersRef, where('Email', '==', credentials.email));
         const snaps = await Promise.all([getDocs(q1), getDocs(q2)]);
+        
         if (snaps.some(s => !s.empty)) {
           allowedRegions.push(connectionId as 'saudi1' | 'egypt1');
         } else {
           // Fallback: scan a small batch to handle case/space differences
           const scan = await getDocs(usersRef);
           const norm = (v: any) => String(v ?? '').trim().toLowerCase();
-          if (scan.docs.some(d => {
+          const found = scan.docs.some(d => {
             const data: any = d.data();
             return norm(data.email) === norm(credentials.email) || norm(data.Email) === norm(credentials.email);
-          })) {
+          });
+          
+          if (found) {
             allowedRegions.push(connectionId as 'saudi1' | 'egypt1');
           }
         }
       }
-      for (const connectionId of connections) {
+
+      // If no regions found, throw error immediately
+      if (allowedRegions.length === 0) {
+        throw new Error('Email not found in any region');
+      }
+
+      // STEP 2: Now validate password in any of the allowed regions
+      for (const connectionId of allowedRegions) {
         const usersRef = collection(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs', 'user_manager', 'records');
         // Try queries first
         const q1 = query(usersRef, where('email', '==', credentials.email));
         const q2 = query(usersRef, where('Email', '==', credentials.email));
         const snaps = await Promise.all([getDocs(q1), getDocs(q2)]);
+        
         const checkDocs = async (docs: any[]) => {
           for (const d of docs) {
             const data: any = d.data();
@@ -164,16 +176,18 @@ class CompanyService {
               return {
                 companyId: clientId,
                 companyData: (companyDoc.data() as CompanyData),
-                allowedRegions: allowedRegions.length > 0 ? allowedRegions : ['saudi1'],
+                allowedRegions: allowedRegions, // Use the complete list of allowed regions
               } as AuthResult;
             }
           }
           return null;
         };
+        
         const res1 = await checkDocs(snaps[0]?.docs || []);
         if (res1) return res1;
         const res2 = await checkDocs(snaps[1]?.docs || []);
         if (res2) return res2;
+        
         // Fallback scan to handle field name variations
         const scan = await getDocs(usersRef);
         const norm = (v: any) => String(v ?? '').trim().toLowerCase();
@@ -186,12 +200,13 @@ class CompanyService {
             return {
               companyId: clientId,
               companyData: (companyDoc.data() as CompanyData),
-              allowedRegions: allowedRegions.length > 0 ? allowedRegions : ['saudi1'],
+              allowedRegions: allowedRegions, // Use the complete list of allowed regions
             } as AuthResult;
           }
         }
       }
-      throw new Error('Invalid email or password');
+      
+      throw new Error('Invalid password');
     } catch (error) {
       console.error('Error during signin:', error);
       throw error;
