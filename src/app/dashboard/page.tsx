@@ -760,20 +760,7 @@ function DashboardContent() {
 
         {/* Analytics Blocks */}
         {analytics && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Payment Success vs Cancellation */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-              <div className="text-slate-500 text-sm mb-2">Payment Success Rate</div>
-              <div className="text-2xl font-bold text-slate-900">{analytics.kpis.paymentSuccessRate.toFixed(2)}%</div>
-              <div className="mt-4 text-slate-500 text-sm">Cancellation Rate: <span className="font-semibold text-slate-900">{analytics.kpis.cancellationRate.toFixed(2)}%</span></div>
-            </div>
-
-            {/* Average Order Value & Upsell */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-              <div className="text-slate-500 text-sm mb-2">Average Order Value</div>
-              <div className="text-2xl font-bold text-slate-900">{Math.round(analytics.kpis.averageOrderValue).toLocaleString()} SAR</div>
-              <div className="mt-4 text-slate-500 text-sm">Up-selling Success: <span className="font-semibold text-slate-900">{analytics.kpis.upsellSuccess.toFixed(2)}%</span></div>
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
             {/* Payment Breakdown - Cool Pie Chart */}
             <div className="bg-gradient-to-br from-slate-50 to-white rounded-2xl shadow-lg border border-slate-200/60 p-6 relative overflow-hidden">
@@ -861,7 +848,8 @@ function DashboardContent() {
                 });
                 
                 return (
-                  <div className="flex items-center justify-center gap-8">
+                  <div className="flex flex-col items-center space-y-8">
+                    {/* Pie Chart */}
                     <div className="relative">
                       <svg width={size + 10} height={size + 10} viewBox={`0 0 ${size + 10} ${size + 10}`} className="drop-shadow-lg">
                         {/* Shadow segments */}
@@ -928,30 +916,24 @@ function DashboardContent() {
                       </svg>
                     </div>
                     
-                    {/* Legend with enhanced styling */}
-                    <div className="space-y-3">
+                    {/* Legend at bottom - Simple list layout for maximum visibility */}
+                    <div className="w-full space-y-3">
                       {segments.map((segment, idx) => (
-                        <div key={idx} className="flex items-center gap-3 group cursor-pointer hover:bg-slate-50 rounded-lg p-2 transition-all duration-200">
+                        <div key={idx} className="flex items-center gap-3 group cursor-pointer hover:bg-slate-50 rounded-lg p-3 transition-all duration-200 border border-slate-100">
                           <div 
-                            className="w-4 h-4 rounded-full shadow-sm border-2 border-white"
+                            className="w-4 h-4 rounded-full shadow-sm border border-white flex-shrink-0"
                             style={{ 
                               background: `linear-gradient(135deg, ${segment.color.light} 0%, ${segment.color.main} 50%, ${segment.color.shadow} 100%)`,
-                              boxShadow: `0 2px 4px ${segment.color.main}40`
+                              boxShadow: `0 1px 2px ${segment.color.main}40`
                             }}
                           />
-                          <div className="flex-1">
+                          <div className="flex-1 flex items-center justify-between">
                             <div className="text-sm font-medium text-slate-700 capitalize group-hover:text-slate-900 transition-colors">
-                              {segment.method}
+                              {segment.method} ({segment.percentage.toFixed(1)}%)
                             </div>
-                            <div className="text-xs text-slate-500">
-                              {segment.percentage.toFixed(1)}%
-                            </div>
-                          </div>
-                          <div className="text-right">
                             <div className="text-sm font-bold text-slate-900">
                               {Math.round(segment.amount).toLocaleString()}
                             </div>
-                            <div className="text-xs text-slate-500">SAR</div>
                           </div>
                         </div>
                       ))}
@@ -960,12 +942,7 @@ function DashboardContent() {
                 );
               })()}
             </div>
-          </div>
-        )}
 
-        {/* Donuts and Bars */}
-        {analytics && (
-          <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Acquisition Channels - Cool 3D Pie Chart */}
             <div className="bg-gradient-to-br from-emerald-50 to-white rounded-2xl shadow-lg border border-emerald-200/60 p-6 relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500"></div>
@@ -978,9 +955,17 @@ function DashboardContent() {
                 Acquisition Channels
               </div>
               {(() => {
-                const entries = Object.entries(analytics.distributions.channelCounts);
-                const total = entries.reduce((s, [,v]) => s + (v as number), 0);
+                const allEntries = Object.entries(analytics.distributions.channelCounts);
+                const total = allEntries.reduce((s, [,v]) => s + (v as number), 0);
                 if (total === 0) return <div className="text-slate-500 text-sm">No data</div>;
+                
+                // Sort by value and take top 5 channels
+                const sortedEntries = allEntries
+                  .sort(([,a], [,b]) => (b as number) - (a as number))
+                  .slice(0, 5);
+                
+                // Calculate total for top 5 channels
+                const top5Total = sortedEntries.reduce((s, [,v]) => s + (v as number), 0);
                 
                 // Beautiful light colors with 3D effect
                 const colors = [
@@ -989,8 +974,6 @@ function DashboardContent() {
                   { main: '#f59e0b', light: '#fed7aa', shadow: '#d97706', glow: '#f59e0b40' }, // Amber
                   { main: '#ef4444', light: '#fecaca', shadow: '#dc2626', glow: '#ef444440' }, // Red
                   { main: '#8b5cf6', light: '#ddd6fe', shadow: '#7c3aed', glow: '#8b5cf640' }, // Violet
-                  { main: '#06b6d4', light: '#a5f3fc', shadow: '#0891b2', glow: '#06b6d440' }, // Cyan
-                  { main: '#84cc16', light: '#d9f99d', shadow: '#65a30d', glow: '#84cc1640' }, // Lime
                 ];
                 
                 const size = 280;
@@ -1001,11 +984,11 @@ function DashboardContent() {
                 const depth = 8; // 3D depth effect
                 
                 let startAngle = -Math.PI / 2;
-                const segments = entries.map(([label, value], i) => {
+                const segments = sortedEntries.map(([label, value], i) => {
                   const numValue = Number(value);
-                  const angle = (numValue / total) * Math.PI * 2;
+                  const angle = (numValue / top5Total) * Math.PI * 2;
                   const endAngle = startAngle + angle;
-                  const percentage = (numValue / total) * 100;
+                  const percentage = (numValue / top5Total) * 100;
                   
                   // Calculate points for 3D effect
                   const outerX1 = cx + radius * Math.cos(startAngle);
@@ -1063,7 +1046,8 @@ function DashboardContent() {
                 });
                 
                 return (
-                  <div className="flex items-center justify-center gap-8">
+                  <div className="flex flex-col items-center space-y-8">
+                    {/* Pie Chart */}
                     <div className="relative">
                       <svg width={size + 20} height={size + 20} viewBox={`0 0 ${size + 20} ${size + 20}`} className="drop-shadow-2xl">
                         {/* Glow effect */}
@@ -1172,33 +1156,25 @@ function DashboardContent() {
                       </svg>
                     </div>
                     
-                    {/* Enhanced Legend */}
-                    <div className="space-y-3">
+                    {/* Legend at bottom - Simple list layout for maximum visibility */}
+                    <div className="w-full space-y-3">
                       {segments.map((segment, idx) => (
-                        <div key={idx} className="flex items-center gap-3 group cursor-pointer hover:bg-white/60 rounded-xl p-3 transition-all duration-300 hover:shadow-md">
+                        <div key={idx} className="flex items-center gap-3 group cursor-pointer hover:bg-slate-50 rounded-lg p-3 transition-all duration-200 border border-slate-100">
                           <div 
-                            className="w-5 h-5 rounded-lg shadow-lg border-2 border-white relative"
+                            className="w-4 h-4 rounded-full shadow-sm border border-white flex-shrink-0"
                             style={{ 
                               background: `linear-gradient(135deg, ${segment.color.light} 0%, ${segment.color.main} 50%, ${segment.color.shadow} 100%)`,
-                              boxShadow: `0 4px 8px ${segment.color.glow}, inset 0 1px 0 rgba(255,255,255,0.3)`
+                              boxShadow: `0 1px 2px ${segment.color.main}40`
                             }}
-                          >
-                            <div 
-                              className="absolute inset-0 rounded-lg"
-                              style={{
-                                background: `linear-gradient(145deg, transparent 40%, ${segment.color.shadow}20 100%)`
-                              }}
-                            />
-                          </div>
-                          <div className="flex-1">
-                            <div className="text-sm font-semibold text-slate-800 group-hover:text-slate-900 transition-colors capitalize">
-                              {segment.label}
+                          />
+                          <div className="flex-1 flex items-center justify-between">
+                            <div className="text-sm font-medium text-slate-700 capitalize group-hover:text-slate-900 transition-colors">
+                              {segment.label} ({segment.percentage.toFixed(1)}%)
                             </div>
-                            <div className="text-xs text-slate-500 font-medium">
-                              {segment.percentage.toFixed(1)}% • {segment.value.toLocaleString()} users
+                            <div className="text-sm font-bold text-slate-900">
+                              {segment.value.toLocaleString()}
                             </div>
                           </div>
-                          <div className="w-8 h-1 rounded-full" style={{ backgroundColor: segment.color.main }} />
                         </div>
                       ))}
                     </div>

@@ -8,7 +8,7 @@ import { companyService } from '@/lib/auth';
 
 export default function AuthPage() {
   const router = useRouter();
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false); // Always false - sign-in only
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -126,57 +126,7 @@ export default function AuthPage() {
 
         {/* Auth Card */}
         <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl border border-white/20 p-8">
-          {/* Tab Toggle */}
-          <div className="flex bg-slate-100 rounded-xl p-1 mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                setIsSignUp(false);
-                setFormData({
-                  companyName: '',
-                  description: '',
-                  adminName: '',
-                  adminEmail: '',
-                  adminPassword: '',
-                  email: '',
-                  password: '',
-                });
-                setLogoFile(null);
-                setError('');
-              }}
-              className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
-                !isSignUp
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-800'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIsSignUp(true);
-                setFormData({
-                  companyName: '',
-                  description: '',
-                  adminName: '',
-                  adminEmail: '',
-                  adminPassword: '',
-                  email: '',
-                  password: '',
-                });
-                setLogoFile(null);
-                setError('');
-              }}
-              className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
-                isSignUp
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-800'
-              }`}
-            >
-              Create Company
-            </button>
-          </div>
+
 
           <div className="text-center mb-6">
             <h2 className="text-xl font-semibold text-slate-800">
@@ -327,17 +277,7 @@ export default function AuthPage() {
               </>
             )}
 
-            {/* Forgot Password (Sign In Only) */}
-            {!isSignUp && (
-              <div className="text-right">
-                <button
-                  type="button"
-                  className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
-                >
-                  Forgot password?
-                </button>
-              </div>
-            )}
+
 
             {/* Submit Button */}
             <button
@@ -359,35 +299,12 @@ export default function AuthPage() {
             </button>
           </form>
 
-          {/* Switch Mode */}
-          <div className="text-center text-sm text-slate-600">
-            {isSignUp ? (
-              <>
-                Already have an account?{' '}
-                <button
-                  onClick={() => setIsSignUp(false)}
-                  className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                >
-                  Sign in
-                </button>
-              </>
-            ) : (
-              <>
-                Don't have a company?{' '}
-                <button
-                  onClick={() => setIsSignUp(true)}
-                  className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                >
-                  Create one
-                </button>
-              </>
-            )}
-          </div>
+
         </div>
 
         {/* Footer */}
         <div className="text-center mt-8 text-slate-500 text-sm">
-          <p>© 2025 WizSheet. All rights reserved.</p>
+          <p>© 2025 BookingX. All rights reserved.</p>
         </div>
       </div>
     </div>
