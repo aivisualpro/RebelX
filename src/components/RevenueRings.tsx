@@ -1,11 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-
-interface RevenueRingsProps {
-  entries: Array<{ label: string; value: number; grad: [string, string] }>;
-  total: number;
-}
+import { RevenueRingsProps } from '@/types/components';
 
 export default function RevenueRings({ entries, total }: RevenueRingsProps) {
   const [progress, setProgress] = useState(0);

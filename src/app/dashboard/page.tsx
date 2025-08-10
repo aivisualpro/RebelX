@@ -9,6 +9,8 @@ import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import { Menu, X, Filter } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { AnalyticsData, DashboardFilters, SalesDataPoint, RevenueRingEntry } from '@/types/analytics';
+import { getFilterSummary, readCookie } from '@/utils/dateUtils';
 
 
 
@@ -32,7 +34,7 @@ function DashboardContent() {
     setLanguage(newLanguage);
     setIsMenuOpen(false);
   };
-  const [analytics, setAnalytics] = useState<Record<string, any> | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const firstFilterFieldRef = useRef<HTMLSelectElement>(null);
   const { region, setRegion, allowedRegions, isLoading: stateLoading, refreshFromStorage } = useAppState();
@@ -121,14 +123,17 @@ function DashboardContent() {
   }, [searchParams, router]);
 
   // Filter state for the filter bar
-  const [filters, setFilters] = useState<{ range: 'this_month' | 'last_month' | 'this_year' | 'last_6_months' | 'all'; location: string; bookedBy: string; receptionist: string; branchManager: string; artist: string; bookPlus: string }>({ range: 'last_6_months', location: '', bookedBy: '', receptionist: '', branchManager: '', artist: '', bookPlus: '' });
+  const [filters, setFilters] = useState<DashboardFilters>({ 
+    range: 'last_6_months', 
+    location: '', 
+    bookedBy: '', 
+    receptionist: '', 
+    branchManager: '', 
+    artist: '', 
+    bookPlus: '' 
+  });
 
   useEffect(() => {
-    const readCookie = (name: string) => {
-      if (typeof document === 'undefined') return '';
-      const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
-      return m ? decodeURIComponent(m[1]) : '';
-    };
     const companyId = searchParams.get('companyId') || readCookie('companyId') || 'booking-plus';
     if (!companyId) return;
     // Compute date range
@@ -195,33 +200,9 @@ function DashboardContent() {
     router.replace(`/dashboard?${params.toString()}`);
   }, [filters, router, searchParams]);
 
-  // Helper: readable filter summary
-  const getFilterSummary = () => {
-    const parts: string[] = [];
-    // derive date range like above
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const format = (d: Date) => `${pad(d.getMonth()+1)}/${pad(d.getDate())}/${d.getFullYear()}`;
-    if (filters.range !== 'all') {
-      let sd: Date, ed: Date;
-      if (filters.range === 'this_month') { sd = new Date(now.getFullYear(), now.getMonth(), 1); ed = new Date(now.getFullYear(), now.getMonth()+1, 0); }
-      else if (filters.range === 'last_6_months') { sd = new Date(now.getFullYear(), now.getMonth() - 6, 1); ed = new Date(now.getFullYear(), now.getMonth()+1, 0); }
-      else if (filters.range === 'last_month') { sd = new Date(now.getFullYear(), now.getMonth()-1, 1); ed = new Date(now.getFullYear(), now.getMonth(), 0); }
-      else { sd = new Date(now.getFullYear(), 0, 1); ed = new Date(now.getFullYear(), 11, 31); }
-      parts.push(`${format(sd)} → ${format(ed)}`);
-    }
-    if (filters.location) parts.push(`Location: ${filters.location}`);
-    if (filters.bookedBy) parts.push(`Booked By: ${filters.bookedBy}`);
-    if (filters.receptionist) parts.push(`Receptionist: ${filters.receptionist}`);
-    if (filters.branchManager) parts.push(`Manager: ${filters.branchManager}`);
-    if (filters.artist) parts.push(`Artist: ${filters.artist}`);
-    if (filters.bookPlus) parts.push(`Book Plus: ${filters.bookPlus}`);
-    return parts.join(' • ');
-  };
 
-  const handleCreateAnother = () => {
-    router.push('/auth');
-  };
+
+
 
   if (isLoading || stateLoading) {
     return (
@@ -242,7 +223,7 @@ function DashboardContent() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-slate-900 mb-4">Company Not Found</h1>
           <button 
-            onClick={handleCreateAnother}
+            onClick={() => router.push('/auth')}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             Create a Company
@@ -352,7 +333,7 @@ function DashboardContent() {
               title="Edit filters"
             >
               <Filter className="w-4 h-4" />
-              <span className="truncate">{getFilterSummary() || 'No filters applied'}</span>
+              <span className="truncate">{getFilterSummary(filters) || 'No filters applied'}</span>
             </button>
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -450,7 +431,7 @@ function DashboardContent() {
               {/* Date */}
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-700 w-28">Date</span>
-                <select ref={firstFilterFieldRef} value={filters.range} onChange={e => setFilters(prev => ({ ...prev, range: e.target.value as 'this_month' | 'last_month' | 'this_year' | 'last_6_months' | 'all' }))} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white">
+                <select ref={firstFilterFieldRef} value={filters.range} onChange={e => setFilters(prev => ({ ...prev, range: e.target.value as DashboardFilters['range'] }))} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white">
                   <option value="last_6_months">Last 6 Months</option>
                   <option value="this_month">This Month</option>
                   <option value="last_month">Last Month</option>

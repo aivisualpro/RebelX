@@ -1,7 +1,7 @@
 "use client"
 
-import * as React from "react"
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
+import React, { useState } from "react"
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
 import {
   Card,
@@ -23,15 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SalesAnalyticsChartProps } from '@/types/components';
 
 interface SalesData {
   Booking_Date: string;
   Total_Book: number;
-}
-
-interface SalesAnalyticsChartProps {
-  data: SalesData[];
-  className?: string;
 }
 
 // Transform the sales data to match the chart format

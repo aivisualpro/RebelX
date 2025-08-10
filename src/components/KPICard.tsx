@@ -1,16 +1,5 @@
 import React from 'react';
-
-interface KPICardProps {
-  title: string;
-  value: string | number;
-  subtitle?: string;
-  className?: string;
-  icon?: React.ReactNode;
-  trend?: {
-    value: number;
-    isPositive: boolean;
-  };
-}
+import { KPICardProps } from '@/types/components';
 
 export default function KPICard({ 
   title, 
