@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { collection, getDocs, query, where, orderBy, doc, getDoc, limit as firestoreLimit } from 'firebase/firestore';
-import { SheetTab } from '@/lib/types';
+import { ClientSheetTab } from '@/types';
 import { db } from '@/lib/firebase';
 
 export async function GET(

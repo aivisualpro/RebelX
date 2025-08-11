@@ -139,6 +139,7 @@ export async function GET(
                 name: header?.toString() || `Column ${index + 1}`,
               })),
               hasData: rows.length > 1,
+              dataRowCount: rows.length, // Include actual row count
             };
           } catch (error) {
             console.error(`Error fetching columns for sheet ${tab.sheetTitle}:`, error);

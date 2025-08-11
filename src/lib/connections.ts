@@ -11,19 +11,88 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { 
-  Connection, 
-  Database, 
-  TableMeta, 
-  CreateConnectionForm,
-  CreateDatabaseForm,
-  BulkCreateTablesForm,
-  Client,
   ClientSheetTab,
-  CreateClientForm,
-  BulkCreateSheetTabsForm,
-  TableRow,
-  SheetTab
-} from './types';
+  GoogleSheetTab
+} from '@/types';
+
+// Define missing types locally until they are added to the main types file
+interface Connection {
+  id: string;
+  name: string;
+  projectId: string;
+  companyId: string;
+  createdBy: string;
+  createdAt: any;
+  status: 'active' | 'disabled';
+}
+
+interface Database {
+  id: string;
+  name: string;
+  connectionId: string;
+  companyId: string;
+  createdAt: any;
+}
+
+interface TableMeta {
+  id: string;
+  name: string;
+  databaseId: string;
+  enabled: boolean;
+}
+
+interface CreateConnectionForm {
+  name: string;
+  projectId: string;
+  serviceAccountKeyFile: string;
+}
+
+interface CreateDatabaseForm {
+  name: string;
+  connectionId: string;
+  companyId: string;
+  createdBy: string;
+}
+
+interface BulkCreateTablesForm {
+  databaseId: string;
+  tables: string[];
+  companyId: string;
+  createdBy: string;
+}
+
+interface Client {
+  id: string;
+  name: string;
+  companyId: string;
+  createdBy: string;
+  createdAt: any;
+}
+
+interface CreateClientForm {
+  name: string;
+  spreadsheetId: string;
+}
+
+interface BulkCreateSheetTabsForm {
+  clientId: string;
+  connectionId: string;
+  tabs: Array<{
+    tabName: string;
+    collectionName: string;
+    keyColumn: string;
+    selectedColumns?: string[];
+  }>;
+  createdBy: string;
+}
+
+interface TableRow {
+  id: string;
+  [key: string]: any;
+}
+
+// Use GoogleSheetTab instead of SheetTab for consistency
+type SheetTab = GoogleSheetTab;
 
 // Connection service functions
 export const connectionService = {

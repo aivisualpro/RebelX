@@ -1,5 +1,5 @@
 import React from 'react';
-import { KPICardProps } from '@/types/components';
+// import { KPICardProps } from '@/types/components';
 
 export default function KPICard({ 
   title, 
@@ -8,7 +8,7 @@ export default function KPICard({
   className = '', 
   icon,
   trend 
-}: KPICardProps) {
+}: any) {
   return (
     <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-5 ${className}`}>
       <div className="flex items-center justify-between mb-2">

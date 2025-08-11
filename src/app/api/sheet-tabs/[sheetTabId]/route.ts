@@ -5,10 +5,10 @@ import { db } from '@/lib/firebase';
 // Update sheet tab configuration (e.g., selected columns, key column)
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { sheetTabId: string } }
+  { params }: { params: Promise<{ sheetTabId: string }> }
 ) {
   try {
-    const { sheetTabId } = params;
+    const { sheetTabId } = await params;
     const body = await request.json();
     // For direct sheet tab management, we'll use default IDs
     const { selectedColumns, keyColumn } = body as {

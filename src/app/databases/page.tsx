@@ -113,17 +113,15 @@ function ConnectionsContent() {
               <h1 className="text-3xl font-bold text-slate-900 mb-2">Databases</h1>
             </div>
             <Link 
-              href="/dashboard" 
+              href="/home" 
               className="inline-flex items-center px-4 py-2 text-slate-600 hover:text-slate-900 transition-colors"
             >
               <ArrowLeft size={16} className="mr-2" />
-              Back to Dashboard
+              Home
             </Link>
           </div>
           
         </div>
-
-        {/* This section is now hidden since we show the database manager directly */}
 
         {/* Database Manager */}
         {showManageDatabases && (

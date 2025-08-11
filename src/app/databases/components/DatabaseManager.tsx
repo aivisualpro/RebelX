@@ -1,12 +1,35 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, RefreshCw, Edit, CheckCircle, XCircle, AlertCircle, Database } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Plus, Edit, Trash2, Database, X, RefreshCw, XCircle } from 'lucide-react';
 import { sheetTabService } from '@/lib/connections';
+import SyncProgressModal from '@/components/SyncProgressModal';
+
+// 🔥 progress subscription
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 import type { ClientSheetTab, DatabaseEntry, GoogleSheetTab } from '@/types';
 
+interface SyncProgressData {
+  totalRecords: number;
+  processedRecords: number;
+  createdRecords: number;
+  updatedRecords: number;
+  errorRecords: number;
+  currentBatch: number;
+  totalBatches: number;
+  startTime: number;
+  estimatedTimeRemaining?: number;
+  recordsPerSecond?: number;
+  status: 'initializing' | 'syncing' | 'completed' | 'error';
+  currentOperation?: string;
+  errors?: string[];
+}
+
 export default function DatabaseManager() {
+  const router = useRouter();
   const [databases, setDatabases] = useState<DatabaseEntry[]>([]);
   const [availableTabs, setAvailableTabs] = useState<GoogleSheetTab[]>([]);
   const [loading, setLoading] = useState(false);
@@ -18,13 +41,28 @@ export default function DatabaseManager() {
     message: string;
     syncedCount: number;
   }>>(new Map());
-  
+
+  // Sync progress modal state
+  const [showSyncProgress, setShowSyncProgress] = useState(false);
+  const [syncProgressData, setSyncProgressData] = useState<SyncProgressData>({
+    totalRecords: 0,
+    processedRecords: 0,
+    createdRecords: 0,
+    updatedRecords: 0,
+    errorRecords: 0,
+    currentBatch: 0,
+    totalBatches: 0,
+    startTime: 0,
+    status: 'initializing'
+  });
+  const [currentSyncDatabase, setCurrentSyncDatabase] = useState<DatabaseEntry | null>(null);
+
   // Add database modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedTab, setSelectedTab] = useState<GoogleSheetTab | null>(null);
   const [selectedKeyColumn, setSelectedKeyColumn] = useState('');
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
-  
+
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingDatabase, setEditingDatabase] = useState<DatabaseEntry | null>(null);
@@ -38,34 +76,27 @@ export default function DatabaseManager() {
   const loadDatabases = async () => {
     try {
       setLoading(true);
-      // Remove client ID references - using default values only
       const response = await sheetTabService.getSheetTabs('default', 'default');
-      console.log('Raw database response:', response);
-      
+
       const mappedDatabases: DatabaseEntry[] = response.map((tab: ClientSheetTab) => {
-        console.log('Processing tab:', tab.sheetName, 'selectedColumns:', tab.selectedColumns);
-        
-        // Ensure selectedColumns is properly handled
-        const selectedColumns = Array.isArray(tab.selectedColumns) 
-          ? tab.selectedColumns 
+        const selCols = Array.isArray(tab.selectedColumns)
+          ? tab.selectedColumns
           : (tab.selectedColumns ? [tab.selectedColumns] : []);
-        
-        console.log('Mapped selectedColumns:', selectedColumns);
-        
+
         return {
           id: tab.id,
           tabName: tab.sheetName,
           collectionName: tab.collectionName,
           keyColumn: tab.keyColumn,
-          selectedColumns: selectedColumns,
+          selectedColumns: selCols,
           createdAt: tab.createdAt?.toDate ? tab.createdAt.toDate() : new Date(tab.createdAt),
           lastSyncAt: tab.lastSyncAt?.toDate ? tab.lastSyncAt.toDate() : (tab.lastSyncAt ? new Date(tab.lastSyncAt) : undefined)
         };
       });
-      console.log('Mapped databases:', mappedDatabases);
+
       setDatabases(mappedDatabases);
-    } catch (error) {
-      console.error('Error loading databases:', error);
+    } catch (e) {
+      console.error('Error loading databases:', e);
       setError('Failed to load databases');
     } finally {
       setLoading(false);
@@ -75,17 +106,36 @@ export default function DatabaseManager() {
   const loadAvailableTabs = async () => {
     try {
       const response = await fetch('/api/client-connections/default/sheets');
+
       if (!response.ok) {
+        if (response.status === 429) {
+          setError('Google Sheets quota exceeded. Please wait and try again.');
+          const fallbackTabs = [
+            {
+              sheetId: 1,
+              sheetTitle: 'Activity Tracking',
+              columns: [
+                { index: 0, name: 'Tracking_id' },
+                { index: 1, name: 'Activity' },
+                { index: 2, name: 'Client' },
+                { index: 3, name: 'Date' },
+                { index: 4, name: 'Status' }
+              ],
+              hasData: true
+            }
+          ];
+          setAvailableTabs(fallbackTabs as any);
+          return;
+        }
         throw new Error('Failed to fetch available tabs');
       }
+
       const data = await response.json();
-      console.log('Available tabs response:', data);
-      const sheetsArray = data.sheets || [];
-      console.log('Sheets array:', sheetsArray);
-      setAvailableTabs(sheetsArray);
-    } catch (error) {
-      console.error('Error loading available tabs:', error);
-      setError('Failed to load available tabs');
+      setAvailableTabs(data.sheets || []);
+      setError('');
+    } catch (e) {
+      console.error('Error loading available tabs:', e);
+      setError('Failed to load available tabs. Please try again.');
     }
   };
 
@@ -98,10 +148,9 @@ export default function DatabaseManager() {
     try {
       setSubmitting(true);
       setError('');
-      
+
       const collectionName = selectedTab.sheetTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
-      
-      // Remove client ID references - using default values only
+
       const createdTab = await sheetTabService.createSheetTab({
         clientId: 'default',
         connectionId: 'default',
@@ -111,7 +160,7 @@ export default function DatabaseManager() {
         selectedColumns,
         createdBy: 'admin',
       });
-      
+
       const newDatabase: DatabaseEntry = {
         id: createdTab.id,
         tabName: createdTab.sheetName || selectedTab.sheetTitle,
@@ -121,15 +170,15 @@ export default function DatabaseManager() {
         createdAt: createdTab.createdAt.toDate().toISOString(),
         lastSyncAt: createdTab.lastSyncAt?.toDate().toISOString()
       };
-      
+
       setDatabases(prev => [...prev, newDatabase]);
       setShowAddModal(false);
       setSelectedTab(null);
       setSelectedKeyColumn('');
       setSelectedColumns([]);
-      
-    } catch (error) {
-      console.error('Error adding database:', error);
+
+    } catch (e) {
+      console.error('Error adding database:', e);
       setError('Failed to add database');
     } finally {
       setSubmitting(false);
@@ -137,55 +186,129 @@ export default function DatabaseManager() {
   };
 
   const handleDeleteDatabase = async (databaseId: string) => {
-    if (!confirm('Are you sure you want to delete this database? This action cannot be undone and will delete all records in the collection.')) {
+    if (!confirm('Are you sure you want to delete this database? This will delete all records in the collection.')) {
       return;
     }
-
     try {
       await sheetTabService.deleteSheetTab(databaseId);
       setDatabases(prev => prev.filter(db => db.id !== databaseId));
-    } catch (error) {
-      console.error('Error deleting database:', error);
+    } catch (e) {
+      console.error('Error deleting database:', e);
       setError('Failed to delete database');
     }
   };
 
+  // 🔥 Start sync ONCE and show modal. Progress comes from Firestore subscription below.
   const handleSyncDatabase = async (database: DatabaseEntry) => {
     if (!database.id) return;
 
+    setCurrentSyncDatabase(database);
+    setShowSyncProgress(true);
+    setSyncingDatabases(prev => new Set(prev).add(database.id));
+    setError('');
+
+    // Reset UI fields
+    const startTime = Date.now();
+    setSyncProgressData({
+      totalRecords: 0,
+      processedRecords: 0,
+      createdRecords: 0,
+      updatedRecords: 0,
+      errorRecords: 0,
+      currentBatch: 0,
+      totalBatches: 0,
+      startTime,
+      status: 'initializing',
+      currentOperation: 'Starting sync...',
+      errors: []
+    });
+
+    // Kick off server sync (server will batch & update Firestore)
     try {
-      setSyncingDatabases(prev => new Set(prev).add(database.id!));
-      setError('');
-      
-      // Remove client ID references - using default values only
-      const result = await sheetTabService.syncSheetTab(database.id, 'default', 'default');
-      
-      setSyncResults(prev => new Map(prev).set(database.id!, {
-        success: true,
-        message: `Synced ${result.syncedCount} records successfully`,
-        syncedCount: result.syncedCount
-      }));
-      
-      setDatabases(prev => prev.map(db => 
-        db.id === database.id 
-          ? { ...db, lastSyncAt: new Date() }
-          : db
-      ));
-      
-    } catch (error) {
-      console.error('Error syncing database:', error);
-      setSyncResults(prev => new Map(prev).set(database.id!, {
-        success: false,
-        message: 'Sync failed',
-        syncedCount: 0
-      }));
-    } finally {
-      setSyncingDatabases(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(database.id!);
-        return newSet;
-      });
+      const res = await fetch(`/api/sheet-tabs/${database.id}/sync`, { method: 'POST' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.error || res.statusText || 'Failed to start sync');
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Failed to start sync');
     }
+  };
+
+  // 🔥 Subscribe to server-side progress on the current sheetTab
+  useEffect(() => {
+    if (!showSyncProgress || !currentSyncDatabase?.id) return;
+
+    const ref = doc(db, 'sheetTabs', currentSyncDatabase.id);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        const s = snap.data() as any;
+        if (!s) return;
+
+        const total = Number(s.total ?? 0);
+        const processed = Number(s.processed ?? 0);
+        const created = Number(s.created ?? 0);
+        const updated = Number(s.updated ?? 0);
+        const skipped = Number(s.skippedRowCount ?? 0);
+        const lastBatch = Number(s.lastBatchIndex ?? 0);
+        const elapsedMs = Number(s.elapsedMs ?? 0);
+        const etaMs = Number(s.etaMs ?? 0);
+
+        // estimate records/sec
+        const rps = elapsedMs > 0 ? Math.round(processed / (elapsedMs / 1000)) : 0;
+
+        setSyncProgressData(prev => ({
+          ...prev,
+          totalRecords: total,
+          processedRecords: processed,
+          createdRecords: created,
+          updatedRecords: updated,
+          errorRecords: skipped,
+          currentBatch: lastBatch,
+          totalBatches: total > 0 ? Math.ceil(total / 500) : prev.totalBatches, // server batch size 500
+          estimatedTimeRemaining: etaMs,
+          recordsPerSecond: rps,
+          status:
+            s.syncStatus === 'running' ? 'syncing' :
+            s.syncStatus === 'completed' ? 'completed' :
+            s.syncStatus === 'completed_with_warnings' ? 'completed' :
+            s.syncStatus === 'failed' ? 'error' : 'initializing',
+          currentOperation:
+            s.syncStatus === 'running'
+              ? `Batch ${lastBatch} • ${processed}/${total}`
+              : (s.syncStatus || 'idle')
+        }));
+
+        // When finished, clear the spinner badge
+        if (['completed', 'completed_with_warnings', 'failed'].includes(s.syncStatus)) {
+          setSyncingDatabases(prev => {
+            const cp = new Set(prev);
+            if (currentSyncDatabase?.id) cp.delete(currentSyncDatabase.id);
+            return cp;
+          });
+
+          // Store a simple result message
+          setSyncResults(prev => new Map(prev).set(currentSyncDatabase.id!, {
+            success: s.syncStatus !== 'failed',
+            message: s.syncStatus === 'failed' ? 'Sync failed' : 'Sync completed',
+            syncedCount: processed
+          }));
+        }
+      },
+      (err) => {
+        console.error('Progress subscribe error:', err);
+        setError(err?.message || 'Failed to read progress');
+      }
+    );
+
+    return () => unsub();
+  }, [showSyncProgress, currentSyncDatabase?.id]);
+
+  const handleCancelSync = () => {
+    // Client-side cancel = just hide modal (server continues).
+    // If you want server cancel, we can add a cancel flag.
+    setShowSyncProgress(false);
   };
 
   const handleEditDatabase = (database: DatabaseEntry) => {
@@ -203,24 +326,23 @@ export default function DatabaseManager() {
     try {
       setSubmitting(true);
       setError('');
-      
-      // Remove client ID references - using default values only
+
       await sheetTabService.updateSheetTab(editingDatabase.id!, 'default', 'default', {
         selectedColumns: editSelectedColumns
       });
-      
-      setDatabases(prev => prev.map(db => 
-        db.id === editingDatabase.id 
+
+      setDatabases(prev => prev.map(db =>
+        db.id === editingDatabase.id
           ? { ...db, selectedColumns: editSelectedColumns }
           : db
       ));
-      
+
       setShowEditModal(false);
       setEditingDatabase(null);
       setEditSelectedColumns([]);
-      
-    } catch (error) {
-      console.error('Error updating database:', error);
+
+    } catch (e) {
+      console.error('Error updating database:', e);
       setError('Failed to update database');
     } finally {
       setSubmitting(false);
@@ -228,11 +350,8 @@ export default function DatabaseManager() {
   };
 
   const getAvailableTabsForAdd = () => {
-    if (!Array.isArray(availableTabs)) {
-      console.error('availableTabs is not an array:', availableTabs);
-      return [];
-    }
-    return availableTabs.filter(tab => 
+    if (!Array.isArray(availableTabs)) return [];
+    return availableTabs.filter(tab =>
       !databases.some(db => db.tabName === tab.sheetTitle)
     );
   };
@@ -307,7 +426,12 @@ export default function DatabaseManager() {
                   <tr key={database.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{database.tabName}</div>
+                        <button
+                          onClick={() => router.push(`/databases/${database.id}/records`)}
+                          className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition-colors"
+                        >
+                          {database.tabName}
+                        </button>
                         {database.lastSyncAt && (
                           <div className="text-xs text-gray-500 mt-1">
                             Last sync: {new Date(database.lastSyncAt).toLocaleString()}
@@ -326,7 +450,7 @@ export default function DatabaseManager() {
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">
                         {database.selectedColumns && database.selectedColumns.length > 0 ? (
-                          database.selectedColumns.length > 3 
+                          database.selectedColumns.length > 3
                             ? `${database.selectedColumns.slice(0, 3).join(', ')} +${database.selectedColumns.length - 3} more`
                             : database.selectedColumns.join(', ')
                         ) : (
@@ -397,8 +521,8 @@ export default function DatabaseManager() {
                 <select
                   value={selectedTab?.sheetTitle || ''}
                   onChange={(e) => {
-                    const tab = getAvailableTabsForAdd().find(t => t.sheetTitle === e.target.value);
-                    setSelectedTab(tab || null);
+                    const tab = getAvailableTabsForAdd().find(t => t.sheetTitle === e.target.value) || null;
+                    setSelectedTab(tab);
                     setSelectedKeyColumn('');
                     setSelectedColumns([]);
                   }}
@@ -538,9 +662,7 @@ export default function DatabaseManager() {
                   <button
                     onClick={() => {
                       const tab = availableTabs.find(t => t.sheetTitle === editingDatabase.tabName);
-                      if (tab) {
-                        setEditSelectedColumns(tab.columns.map(col => col.name));
-                      }
+                      if (tab) setEditSelectedColumns(tab.columns.map(col => col.name));
                     }}
                     className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
                   >
@@ -601,6 +723,16 @@ export default function DatabaseManager() {
           </div>
         </div>
       )}
+
+      {/* Sync Progress Modal (driven by Firestore updates) */}
+      <SyncProgressModal
+        isOpen={showSyncProgress}
+        onClose={() => setShowSyncProgress(false)}
+        onCancel={handleCancelSync}
+        databaseName={currentSyncDatabase?.tabName || ''}
+        collectionName={currentSyncDatabase?.collectionName || ''}
+        progressData={syncProgressData}
+      />
     </div>
   );
 }
