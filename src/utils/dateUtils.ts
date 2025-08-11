@@ -43,6 +43,39 @@ export const readCookie = (name: string): string | null => {
   return null;
 };
 
+export const getDateRangeForFilter = (range: string): { startDate: string; endDate: string } => {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const format = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  
+  let startDate = '';
+  let endDate = '';
+  
+  if (range === 'this_month') {
+    const sd = new Date(now.getFullYear(), now.getMonth(), 1);
+    const ed = new Date(now.getFullYear(), now.getMonth()+1, 0);
+    startDate = format(sd); 
+    endDate = format(ed);
+  } else if (range === 'last_month') {
+    const sd = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    const ed = new Date(now.getFullYear(), now.getMonth(), 0);
+    startDate = format(sd); 
+    endDate = format(ed);
+  } else if (range === 'this_year') {
+    const sd = new Date(now.getFullYear(), 0, 1);
+    const ed = new Date(now.getFullYear(), 11, 31);
+    startDate = format(sd); 
+    endDate = format(ed);
+  } else if (range === 'last_6_months') {
+    const sd = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+    const ed = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    startDate = format(sd); 
+    endDate = format(ed);
+  }
+  
+  return { startDate, endDate };
+};
+
 export const getFilterSummary = (filters: DashboardFilters): string => {
   const parts: string[] = [];
   const now = new Date();

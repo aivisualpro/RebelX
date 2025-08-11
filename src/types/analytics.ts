@@ -28,6 +28,7 @@ export interface FilterOptions {
   receptionist: string[];
   branchManager: string[];
   artist: string[];
+  bookPlus: string[];
 }
 
 export interface TurnoverSeriesItem {

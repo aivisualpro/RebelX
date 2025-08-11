@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateSpreadsheetId } from '@/lib/validation';
+import { Database } from '@/lib/types';
+import { Timestamp } from 'firebase/firestore';
 
 // For testing - simple in-memory storage
-let databases: any[] = [];
+let databases: Database[] = [];
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,13 +44,13 @@ export async function POST(request: NextRequest) {
     console.log('Creating database with:', { companyId, connectionId, cleanSpreadsheetId, spreadsheetName });
 
     // Create database object (using in-memory storage for testing)
-    const newDatabase = {
+    const newDatabase: Database = {
       id: `db_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       companyId,
       connectionId,
       spreadsheetId: cleanSpreadsheetId,
       spreadsheetName,
-      createdAt: new Date(),
+      createdAt: Timestamp.fromDate(new Date()),
       status: 'active',
     };
 

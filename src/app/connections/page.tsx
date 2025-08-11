@@ -2,43 +2,31 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Plus, Database, Users, Sparkles, Menu, X } from 'lucide-react';
+import { Plus, Database, Users, Sparkles, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useAppState } from '@/app/state/AppStateProvider';
-import { 
-  CreateConnectionModal,
-  CreateDatabaseModal,
-  SelectTablesModal 
-} from './components';
 import CreateClientModal from './components/CreateClientModal';
 import ManageSheetTabsModal from './components/ManageSheetTabsModal';
-import { connectionService, databaseService } from '@/lib/connections';
 import { clientConnectionService } from '@/lib/clientConnectionService';
 import { basicClientService } from '@/lib/basicClientService';
-import { Connection, Database as DatabaseType, Client, ClientConnection } from '@/lib/types';
+import { Client, ClientConnection } from '@/lib/types';
 
 function ConnectionsContent() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [companyId, setCompanyId] = useState<string>('default');
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [databases, setDatabases] = useState<{ [connectionId: string]: DatabaseType[] }>({});
+
   const [clients, setClients] = useState<Client[]>([]);
   const [clientConnections, setClientConnections] = useState<ClientConnection[]>([]);
-  const [currentTab, setCurrentTab] = useState<'clients'>('clients');
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [currentTab] = useState<'clients'>('clients');
+
   const [hasAccess, setHasAccess] = useState(false);
   const [accessChecked, setAccessChecked] = useState(false);
-  const { region, setRegion, allowedRegions } = useAppState();
   
   // Modal states
-  const [showCreateConnection, setShowCreateConnection] = useState(false);
-  const [showCreateDatabase, setShowCreateDatabase] = useState(false);
-  const [showSelectTables, setShowSelectTables] = useState(false);
   const [showCreateClient, setShowCreateClient] = useState(false);
   const [showManageSheetTabs, setShowManageSheetTabs] = useState(false);
-  const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null);
-  const [selectedDatabase, setSelectedDatabase] = useState<DatabaseType | null>(null);
+
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedClientConnection, setSelectedClientConnection] = useState<ClientConnection | null>(null);
 
@@ -84,27 +72,10 @@ function ConnectionsContent() {
         const clientConnectionsData = await clientConnectionService.getConnections(companyId, companyId);
         setClientConnections(clientConnectionsData);
         
-        // Load connections (legacy approach)
-        const connectionsData = await connectionService.getConnections(companyId);
-        setConnections(connectionsData);
-        
-        // Load databases for each connection
-        const databasesData: { [connectionId: string]: DatabaseType[] } = {};
-        for (const connection of connectionsData) {
-          try {
-            const connectionDatabases = await databaseService.getDatabases(companyId, connection.id);
-            databasesData[connection.id] = connectionDatabases;
-          } catch (error) {
-            console.error(`Error loading databases for connection ${connection.id}:`, error);
-            databasesData[connection.id] = [];
-          }
-        }
-        setDatabases(databasesData);
+
       } catch (error) {
         console.error('Error loading company data:', error);
         // Set empty arrays on error
-        setConnections([]);
-        setDatabases({});
         setClients([]);
         setClientConnections([]);
       } finally {
@@ -115,54 +86,7 @@ function ConnectionsContent() {
     loadCompanyData();
   }, [companyId]);
 
-  // Legacy workflow handlers
-  const handleCreateConnection = () => {
-    // For client connections (new architecture), use the client modal
-    setShowCreateClient(true);
-  };
 
-  const handleConnectionCreated = async () => {
-    setShowCreateConnection(false);
-    try {
-      const connectionsData = await connectionService.getConnections(companyId);
-      setConnections(connectionsData);
-    } catch (error) {
-      console.error('Error reloading connections:', error);
-    }
-  };
-
-  const handleCreateDatabase = (connection: Connection) => {
-    setSelectedConnection(connection);
-    setShowCreateDatabase(true);
-  };
-
-  const handleDatabaseCreated = async () => {
-    setShowCreateDatabase(false);
-    const connection = selectedConnection;
-    setSelectedConnection(null);
-    
-    if (connection) {
-      try {
-        const connectionDatabases = await databaseService.getDatabases(companyId, connection.id);
-        setDatabases(prev => ({
-          ...prev,
-          [connection.id]: connectionDatabases
-        }));
-      } catch (error) {
-        console.error('Error reloading databases:', error);
-      }
-    }
-  };
-
-  const handleSelectTables = (database: DatabaseType) => {
-    setSelectedDatabase(database);
-    setShowSelectTables(true);
-  };
-
-  const handleTablesSelected = () => {
-    setShowSelectTables(false);
-    setSelectedDatabase(null);
-  };
 
   // New client workflow handlers
   const handleCreateClient = () => {
@@ -234,29 +158,16 @@ function ConnectionsContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-slate-900">Connections</h1>
-          <div className="flex items-center gap-3 relative">
-            <div className="hidden sm:flex items-center border border-slate-200 rounded-lg overflow-hidden">
-              <button disabled={!allowedRegions.includes('saudi1')} className={`px-3 py-1 text-sm border-r border-slate-200 ${region==='saudi1' ? 'bg-green-100 text-green-700' : 'bg-white text-slate-800 hover:bg-slate-50'} ${allowedRegions.includes('saudi1') ? '' : 'opacity-50 cursor-not-allowed'}`} onClick={()=> setRegion('saudi1')}>Saudi</button>
-              <button disabled={!allowedRegions.includes('egypt1')} className={`px-3 py-1 text-sm ${region==='egypt1' ? 'bg-green-100 text-green-700' : 'bg-white text-slate-800 hover:bg-slate-50'} ${allowedRegions.includes('egypt1') ? '' : 'opacity-50 cursor-not-allowed'}`} onClick={()=> setRegion('egypt1')}>Egypt</button>
-            </div>
-            <button onClick={()=>setIsMenuOpen(!isMenuOpen)} className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50" aria-label="menu">
-              {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
-            {isMenuOpen && (
-              <div className="absolute top-10 right-0 w-56 bg-white text-slate-800 rounded-xl shadow-xl border border-slate-200 py-2">
-                <Link href={`/dashboard`} className="block px-4 py-2 hover:bg-slate-50">Dashboard</Link>
-                <Link href={`/reports`} className="block px-4 py-2 hover:bg-slate-50">Reports</Link>
-
-                <button onClick={()=>{ document.cookie = 'companyId=; Max-Age=0; path=/'; localStorage.removeItem('region'); localStorage.removeItem('allowedRegions'); location.href='/auth'; }} className="block w-full text-left px-4 py-2 hover:bg-slate-50">Logout</button>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
+      {/* Dashboard Navigation Button */}
+      <div className="p-6 pb-0">
+        <Link 
+          href={`/dashboard?companyId=${searchParams.get('companyId') || 'booking-plus'}`}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Dashboard
+        </Link>
+      </div>
 
       {/* Main Content */}
       <div className="p-6">
@@ -339,7 +250,7 @@ function ConnectionsContent() {
                         </p>
                       </div>
 
-                      <div className="flex space-x-2">
+                      <div className="flex space-x-2 mt-4">
                         <button
                           onClick={() => handleManageSheetTabs(connection)}
                           className="px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors"
@@ -369,128 +280,19 @@ function ConnectionsContent() {
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="mb-6">
-              <button
-                onClick={handleCreateConnection}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Plus size={20} />
-                <span>Add Connection</span>
-              </button>
+            {/* Legacy workflow removed - now focusing on client connections only */}
+            <div className="text-center py-12">
+              <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <Database size={32} className="text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Legacy Workflow Removed</h3>
+              <p className="text-gray-600 mb-4">This section previously managed legacy database connections. The application now focuses on client connections and Google Sheets integration.</p>
             </div>
-
-            {/* Connections List */}
-            {connections.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                  <Database size={32} className="text-gray-400" />
-                </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No connections yet</h3>
-                <p className="text-gray-600 mb-4">Get started by creating your first Google Cloud connection.</p>
-                <button
-                  onClick={handleCreateConnection}
-                  className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <Plus size={20} />
-                  <span>Add Connection</span>
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {connections.map((connection) => (
-                  <div key={connection.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                          {connection.name}
-                        </h3>
-                        <p className="text-sm text-gray-600">
-                          Project: {connection.projectId}
-                        </p>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                        <span className="text-sm text-gray-600">Active</span>
-                      </div>
-                    </div>
-                    
-                    <div className="mb-4">
-                      <p className="text-sm text-gray-600 mb-2">
-                        Created: {connection.createdAt.toDate().toLocaleDateString()}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        Databases: {databases[connection.id]?.length || 0}
-                      </p>
-                    </div>
-
-                    {/* Show databases if any */}
-                    {databases[connection.id] && databases[connection.id].length > 0 && (
-                      <div className="mb-4">
-                        <h4 className="text-sm font-medium text-gray-900 mb-2">Databases:</h4>
-                        <div className="space-y-1">
-                          {databases[connection.id].slice(0, 3).map((database) => (
-                            <div key={database.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                              <span className="text-sm text-gray-700 truncate">{database.spreadsheetName}</span>
-                              <button
-                                onClick={() => handleSelectTables(database)}
-                                className="text-xs text-blue-600 hover:text-blue-800"
-                              >
-                                Tables
-                              </button>
-                            </div>
-                          ))}
-                          {databases[connection.id].length > 3 && (
-                            <p className="text-xs text-gray-500">
-                              +{databases[connection.id].length - 3} more
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleCreateDatabase(connection)}
-                        className="px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors"
-                      >
-                        Add Database
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {/* Modals */}
-      {showCreateConnection && (
-        <CreateConnectionModal
-          companyId={companyId}
-          onClose={() => setShowCreateConnection(false)}
-          onSuccess={handleConnectionCreated}
-        />
-      )}
-
-      {showCreateDatabase && selectedConnection && (
-        <CreateDatabaseModal
-          companyId={companyId}
-          connection={selectedConnection}
-          onClose={() => setShowCreateDatabase(false)}
-          onSuccess={handleDatabaseCreated}
-        />
-      )}
-
-      {showSelectTables && selectedDatabase && (
-        <SelectTablesModal
-          companyId={companyId}
-          database={selectedDatabase}
-          onClose={() => setShowSelectTables(false)}
-          onSuccess={handleTablesSelected}
-        />
-      )}
+      {/* Legacy workflow modals removed */}
 
       {/* Client Modals */}
       {showCreateClient && (

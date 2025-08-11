@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, orderBy, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export async function POST(request: NextRequest) {
@@ -147,20 +147,37 @@ export async function GET(request: NextRequest) {
 
     console.log('Fetching sheet tabs for:', { companyId, clientId, connectionId });
 
-    let sheetTabs: any[] = [];
+    interface SheetTabData {
+      id: string;
+      sheetTitle: string;
+      sheetId: number;
+      isActive?: boolean;
+      createdAt: any;
+      lastSyncAt?: any;
+    }
+
+    let sheetTabs: SheetTabData[] = [];
 
     if (connectionId) {
       // Get sheet tabs for a specific connection
       const sheetTabsCollectionRef = collection(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs');
       const snapshot = await getDocs(sheetTabsCollectionRef);
       
-      sheetTabs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        // Convert Firestore Timestamp to serializable format
-        createdAt: doc.data().createdAt?.toDate().toISOString(),
-        lastSyncAt: doc.data().lastSyncAt?.toDate().toISOString() || null,
-      }));
+      sheetTabs = snapshot.docs.map(doc => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          // Provide both sheetName and sheetTitle for backward compatibility
+          sheetName: d.sheetName || doc.id,
+          sheetTitle: d.sheetName || doc.id,
+          collectionName: d.collectionName,
+          keyColumn: d.keyColumn,
+          recordCount: typeof d.recordCount === 'number' ? d.recordCount : 0,
+          isActive: d.isActive !== false,
+          createdAt: d.createdAt?.toDate().toISOString(),
+          lastSyncAt: d.lastSyncAt?.toDate().toISOString() || null,
+        } as any;
+      });
     } else {
       // Get sheet tabs for all connections under a client
       const connectionsRef = collection(db, 'clients', clientId, 'connections');
@@ -172,13 +189,20 @@ export async function GET(request: NextRequest) {
           const sheetTabsCollectionRef = collection(db, 'clients', clientId, 'connections', connectionDoc.id, 'sheetTabs');
           const sheetTabsSnapshot = await getDocs(sheetTabsCollectionRef);
           
-          return sheetTabsSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            // Convert Firestore Timestamp to serializable format
-            createdAt: doc.data().createdAt?.toDate().toISOString(),
-            lastSyncAt: doc.data().lastSyncAt?.toDate().toISOString() || null,
-          }));
+          return sheetTabsSnapshot.docs.map(doc => {
+            const d = doc.data();
+            return {
+              id: doc.id,
+              sheetName: d.sheetName || doc.id,
+              sheetTitle: d.sheetName || doc.id,
+              collectionName: d.collectionName,
+              keyColumn: d.keyColumn,
+              recordCount: typeof d.recordCount === 'number' ? d.recordCount : 0,
+              isActive: d.isActive !== false,
+              createdAt: d.createdAt?.toDate().toISOString(),
+              lastSyncAt: d.lastSyncAt?.toDate().toISOString() || null,
+            } as any;
+          });
         })
       );
       

@@ -22,9 +22,9 @@ class SecretManagerService {
             },
           },
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If secret already exists, that's okay
-        if (!error.message?.includes('already exists')) {
+        if (!(error as Error).message?.includes('already exists')) {
           throw error;
         }
       }

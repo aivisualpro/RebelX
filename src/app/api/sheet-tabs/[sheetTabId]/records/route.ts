@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { collection, getDocs, query, orderBy, limit as firestoreLimit, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, doc, getDoc, limit as firestoreLimit } from 'firebase/firestore';
+import { SheetTab } from '@/lib/types';
 import { db } from '@/lib/firebase';
 
 export async function GET(
@@ -55,19 +56,19 @@ export async function GET(
       syncedAt: doc.data().syncedAt?.toDate?.()?.toISOString() || doc.data().syncedAt,
     }));
 
-    console.log(`Found ${records.length} records for sheet tab:`, sheetTabData.sheetName);
+    console.log(`Found ${records.length} records for sheet tab:`, sheetTabId);
 
     return NextResponse.json({
       success: true,
       records,
       sheetTabInfo: {
-        sheetName: sheetTabData.sheetName,
-        collectionName: sheetTabData.collectionName,
-        keyColumn: sheetTabData.keyColumn,
-        recordCount: sheetTabData.recordCount || 0,
-        lastSyncAt: sheetTabData.lastSyncAt?.toDate?.()?.toISOString() || null,
-        originalHeaders: sheetTabData.originalHeaders || [], // Include original headers
-        headerOrder: sheetTabData.headerOrder || [], // Include sanitized header order
+        sheetName: sheetTabId,
+        collectionName: sheetTabId,
+        keyColumn: '',
+        recordCount: records.length,
+        lastSyncAt: new Date().toISOString(),
+        originalHeaders: [],
+        headerOrder: [],
       },
       storagePath: `clients/${clientId}/connections/${connectionId}/sheetTabs/${sheetTabId}/records`,
       totalFound: records.length,

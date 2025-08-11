@@ -1,5 +1,5 @@
 // Company creation service using Firebase (no authentication)
-import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, query, where, getDocs, QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
 
@@ -91,13 +91,14 @@ class CompanyService {
       }
       const docRef = doc(db, 'clients', companyId);
       const current = (await getDoc(docRef)).data() as CompanyData | undefined;
-      const updated: any = {
+      const companyData = data;
+      const updated: Partial<CompanyData> = {
         ...current,
-        ...data,
-        logoUrl: logoUrl ?? data.logoUrl ?? current?.logoUrl ?? '',
+        ...companyData,
+        logoUrl: logoUrl ?? companyData.logoUrl ?? current?.logoUrl ?? '',
         updatedAt: new Date(),
       };
-      delete updated.logoFile;
+      // logoFile is not part of CompanyData, so no need to delete it
       await setDoc(docRef, updated, { merge: true });
     } catch (error) {
       console.error('Error updating company:', error);
@@ -167,7 +168,7 @@ class CompanyService {
         const q2 = query(usersRef, where('Email', '==', credentials.email));
         const snaps = await Promise.all([getDocs(q1), getDocs(q2)]);
         
-        const checkDocs = async (docs: any[]) => {
+        const checkDocs = async (docs: QueryDocumentSnapshot<DocumentData>[]) => {
           for (const d of docs) {
             const data: any = d.data();
             const pass = String(data.password ?? data.Password ?? '').trim();
@@ -224,13 +225,27 @@ class CompanyService {
   }
 
   // Get company data from Firestore
+  // In-memory cache for company data
+  private companyDataCache = new Map<string, { data: CompanyData | null; timestamp: number }>();
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
   async getCompanyData(companyId: string): Promise<CompanyData | null> {
+    // Check cache first
+    const cached = this.companyDataCache.get(companyId);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
+      return cached.data;
+    }
+
     try {
       const companyDoc = await getDoc(doc(db, 'clients', companyId));
+      let data: CompanyData | null = null;
       if (companyDoc.exists()) {
-        return companyDoc.data() as CompanyData;
+        data = companyDoc.data() as CompanyData;
       }
-      return null;
+      
+      // Cache the result
+      this.companyDataCache.set(companyId, { data, timestamp: Date.now() });
+      return data;
     } catch (error) {
       console.error('Error getting company data:', error);
       throw error;

@@ -1,7 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // For testing - simple in-memory storage
-let tables: any[] = [];
+interface TableData {
+  id: string;
+  companyId: string;
+  connectionId: string;
+  databaseId: string;
+  spreadsheetId: string;
+  sheetId: string;
+  sheetTitle: string;
+  keyColumn: string;
+  headerRow: number;
+  enabled: boolean;
+  createdAt: Date;
+  status: string;
+  name?: string;
+  headers?: string[];
+  lastSync?: string;
+  recordCount?: number;
+}
+
+const tables: TableData[] = [];
 
 export async function POST(request: NextRequest) {
   try {

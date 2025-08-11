@@ -1,6 +1,5 @@
 import { 
   collection, 
-  addDoc, 
   getDocs, 
   doc, 
   updateDoc, 
@@ -21,7 +20,9 @@ import {
   Client,
   ClientSheetTab,
   CreateClientForm,
-  BulkCreateSheetTabsForm
+  BulkCreateSheetTabsForm,
+  TableRow,
+  SheetTab
 } from './types';
 
 // Connection service functions
@@ -68,9 +69,9 @@ export const connectionService = {
       }
       
       const data = await response.json();
-      return data.connections.map((conn: any) => ({
+      return data.connections.map((conn: Connection) => ({
         ...conn,
-        createdAt: { toDate: () => new Date(conn.createdAt) } // Convert string back to Timestamp-like object
+        createdAt: conn.createdAt // Convert string back to Timestamp-like object
       }));
     } catch (error) {
       console.error('Error fetching connections:', error);
@@ -120,7 +121,7 @@ export const connectionService = {
 // Database service functions
 export const databaseService = {
   // Create a new database (spreadsheet)
-  async createDatabase(formData: CreateDatabaseForm): Promise<{ id: string; spreadsheetName: string; tabs: any[] }> {
+  async createDatabase(formData: CreateDatabaseForm): Promise<{ id: string; spreadsheetName: string; tabs: SheetTab[] }> {
     try {
       const response = await fetch('/api/databases', {
         method: 'POST',
@@ -156,9 +157,9 @@ export const databaseService = {
       }
       
       const data = await response.json();
-      return data.databases.map((db: any) => ({
+      return data.databases.map((db: Database) => ({
         ...db,
-        createdAt: { toDate: () => new Date(db.createdAt) } // Convert string back to Timestamp-like object
+        createdAt: db.createdAt // Convert string back to Timestamp-like object
       }));
     } catch (error) {
       console.error('Error fetching databases:', error);
@@ -257,7 +258,7 @@ export const tableService = {
   },
 
   // Get table data (rows)
-  async getTableData(tableId: string, limit: number = 100): Promise<any[]> {
+  async getTableData(tableId: string, limit: number = 100): Promise<TableRow[]> {
     try {
       const response = await fetch(`/api/tables/${tableId}/data?limit=${limit}`);
       
@@ -308,9 +309,9 @@ export const clientService = {
       }
       
       const data = await response.json();
-      return data.clients.map((client: any) => ({
+      return data.clients.map((client: Client) => ({
         ...client,
-        createdAt: { toDate: () => new Date(client.createdAt) }
+        createdAt: client.createdAt.toDate()
       }));
     } catch (error) {
       console.error('Error fetching clients:', error);
@@ -322,7 +323,7 @@ export const clientService = {
 // Sheet Tab service functions (NEW Firebase-based architecture)
 export const sheetTabService = {
   // Create sheet tabs for a client (this creates Firebase collections)
-  async createSheetTabs(formData: BulkCreateSheetTabsForm): Promise<{ collectionsCreated: any[] }> {
+  async createSheetTabs(formData: BulkCreateSheetTabsForm): Promise<{ collectionsCreated: string[] }> {
     try {
       const response = await fetch('/api/sheet-tabs', {
         method: 'POST',
@@ -389,7 +390,7 @@ export const sheetTabService = {
         keyColumn: data.keyColumn,
         selectedColumns: data.selectedColumns,
         isActive: true,
-        createdAt: { toDate: () => new Date() } as any,
+        createdAt: { toDate: () => new Date() } as Timestamp,
         createdBy: data.createdBy,
       };
     } catch (error) {
@@ -524,7 +525,7 @@ export const sheetTabService = {
   // Get records for a sheet tab
   async getSheetTabRecords(tabId: string, clientId: string, connectionId: string, limit: number = 100): Promise<{
     success: boolean;
-    records: any[];
+    records: Record<string, unknown>[];
     sheetTabInfo: {
       sheetName: string;
       collectionName: string;

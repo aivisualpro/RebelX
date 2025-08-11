@@ -14,7 +14,7 @@ class ClientConnectionService {
     }
 
     const data = await response.json();
-    return data.connections.map((connection: any) => ({
+    return data.connections.map((connection: ClientConnection) => ({
       ...connection,
       createdAt: { toDate: () => new Date(connection.createdAt.seconds * 1000) }
     }));

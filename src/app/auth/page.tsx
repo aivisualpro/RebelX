@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Building, Upload, FileText, Menu, X } from 'lucide-react';
+
+import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Building, Upload, FileText } from 'lucide-react';
 import { companyService } from '@/lib/auth';
 
 export default function AuthPage() {
@@ -11,7 +11,7 @@ export default function AuthPage() {
   const [isSignUp, setIsSignUp] = useState(false); // Always false - sign-in only
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     companyName: '',
     description: '',

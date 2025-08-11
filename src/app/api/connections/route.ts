@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateServiceAccountKey } from '@/lib/validation';
+import { Connection } from '@/lib/types';
 
 // For testing - simple in-memory storage
-let connections: any[] = [];
+let connections: Connection[] = [];
+
+import { Timestamp } from 'firebase/firestore';
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,14 +58,14 @@ export async function POST(request: NextRequest) {
     console.log('Creating connection with:', { name, projectId, companyId, serviceAccountEmail });
 
     // Create connection object (using in-memory storage for testing)
-    const newConnection = {
-      id: `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    const newConnection: Connection = {
+      id: `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, 
       companyId,
       name,
       projectId,
       serviceAccountEmail,
       secretName,
-      createdAt: new Date(),
+      createdAt: Timestamp.fromDate(new Date()),
       createdBy,
       status: 'active',
     };

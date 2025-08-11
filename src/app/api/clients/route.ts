@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { collection, addDoc, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, orderBy, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { Client } from '@/lib/types';
 import { db } from '@/lib/firebase';
 import { validateServiceAccountKey, validateSpreadsheetId } from '@/lib/validation';
 
@@ -67,19 +68,17 @@ export async function POST(request: NextRequest) {
     console.log('Creating client with:', { name, projectId, companyId, serviceAccountEmail, cleanSpreadsheetId });
 
     // Save client to Firebase
-    const clientData = {
+    const clientData: Omit<Client, 'id'> = {
       companyId,
       name,
       projectId,
       serviceAccountEmail,
-      serviceAccountKey: serviceAccountKey, // Store the parsed key object
       secretName,
       spreadsheetId: cleanSpreadsheetId,
       spreadsheetName,
-      isActive: true,
       createdAt: Timestamp.now(),
       createdBy,
-      lastSyncAt: null,
+      status: 'active',
     };
 
     // Add client to Firestore
@@ -143,7 +142,7 @@ export async function GET(request: NextRequest) {
           serviceAccountKey: undefined,
         };
       })
-      .filter((client: any) => client.isActive !== false) // Filter active clients on the client side
+      .filter((client: any) => client.status !== 'inactive') // Filter active clients on the client side
       .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()); // Sort by created date desc
 
     console.log('Found clients:', companyClients.length);

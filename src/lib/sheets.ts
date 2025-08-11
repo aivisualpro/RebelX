@@ -48,7 +48,7 @@ export async function getSheetHeaders(
       valueRenderOption: 'UNFORMATTED_VALUE',
     });
 
-    return (response.data.values?.[0] || []).map((header: any) => 
+    return (response.data.values?.[0] || []).map((header: string) => 
       String(header || '').trim()
     ).filter(Boolean);
   } catch (error) {
@@ -61,7 +61,7 @@ export async function readSheetValues(
   sheets: any, 
   spreadsheetId: string, 
   sheetTitle: string
-): Promise<any[][]> {
+): Promise<string[][]> {
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,

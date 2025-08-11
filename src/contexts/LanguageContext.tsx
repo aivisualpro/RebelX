@@ -20,9 +20,9 @@ const translations: Translations = {
     Egyptian: 'الداشبورد'
   },
   'dashboard.totalSales': {
-    English: 'Total Sales (SAR)',
-    Arabic: 'إجمالي المبيعات (ريال)',
-    Egyptian: 'مجموع المبيعات (ريال)'
+    English: 'Total Sales',
+    Arabic: 'إجمالي المبيعات',
+    Egyptian: 'مجموع المبيعات'
   },
   'dashboard.uniqueClients': {
     English: 'Unique Clients',
@@ -105,11 +105,7 @@ const translations: Translations = {
     Arabic: 'الاتصالات',
     Egyptian: 'الكونكشن'
   },
-  'menu.reports': {
-    English: 'Reports',
-    Arabic: 'التقارير',
-    Egyptian: 'الريبورت'
-  },
+
   'menu.account': {
     English: 'Account',
     Arabic: 'الحساب',

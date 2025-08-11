@@ -8,6 +8,11 @@ export interface Client {
   email?: string;
   phone?: string;
   address?: string;
+  projectId: string;
+  serviceAccountEmail: string;
+  secretName: string;
+  spreadsheetId: string;
+  spreadsheetName: string;
   
   createdAt: Timestamp;
   createdBy: string;
@@ -97,7 +102,7 @@ export interface TableMeta {
 
 // Table row interface
 export interface TableRow {
-  [key: string]: any;
+  [key: string]: unknown;
   _meta: {
     companyId: string;
     tableId: string;
@@ -116,6 +121,33 @@ export interface SheetTab {
 export interface SpreadsheetInfo {
   spreadsheetName: string;
   tabs: SheetTab[];
+}
+
+// User interface for reports
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  phone: string;
+  department: string;
+  status: string;
+}
+
+// User report interface
+export interface UserReport {
+  users: User[];
+  summary: {
+    total: number;
+    salesOfficers: number;
+    artists: number;
+    receptionists: number;
+  };
+  categorized: {
+    salesOfficers: User[];
+    artists: User[];
+    receptionists: User[];
+  };
 }
 
 // Form interfaces for UI

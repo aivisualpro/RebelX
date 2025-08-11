@@ -75,27 +75,55 @@ export default function ManageSheetTabsModal({ clientConnection, onClose, onSucc
   const loadAvailableSheets = async () => {
     try {
       setLoading(true);
+      console.log('Loading sheets for connection ID:', clientConnection.id);
       const response = await fetch(`/api/client-connections/${clientConnection.id}/sheets`);
       
       if (!response.ok) {
-        throw new Error('Failed to fetch available sheets');
+        const errorText = await response.text();
+        console.error('Failed to fetch sheets:', response.status, errorText);
+        throw new Error(`Failed to fetch available sheets: ${response.status} ${errorText}`);
       }
       
       const data = await response.json();
+      console.log('API Response:', data);
       
-      if (data.success) {
+      if (data.success && data.sheets && Array.isArray(data.sheets)) {
+        console.log('Fetched sheets data:', data.sheets);
         // Convert API format to frontend format
-        const convertedSheets = data.sheets.map((sheet: any) => ({
-          sheetId: sheet.sheetId,
-          sheetName: sheet.sheetTitle, // Convert sheetTitle to sheetName
-          rowCount: sheet.hasData ? 100 : 0, // Mock data for now
-          columnCount: sheet.columns.length,
-          availableColumns: sheet.columns.map((col: any, index: number) => ({
-            name: col.name,
-            letter: String.fromCharCode(65 + index), // A, B, C, etc.
-            index: col.index + 1,
-          })),
-        }));
+        const convertedSheets = data.sheets.map((sheet: any) => {
+          // Try multiple possible fields for sheet name
+          const sheetName = sheet.sheetTitle || sheet.sheetName || sheet.title || `Sheet ${sheet.sheetId || ''}`.trim();
+          console.log('Processing sheet:', { 
+            sheetId: sheet.sheetId, 
+            sheetTitle: sheet.sheetTitle,
+            sheetName: sheet.sheetName,
+            title: sheet.title,
+            finalSheetName: sheetName,
+            hasColumns: !!sheet.columns,
+            columnCount: sheet.columns ? sheet.columns.length : 0
+          });
+          
+          const sheetData = {
+            sheetId: sheet.sheetId || Date.now(), // Fallback to timestamp if no ID
+            sheetName: sheetName,
+            rowCount: sheet.rowCount || (sheet.hasData ? 100 : 0),
+            columnCount: sheet.columns ? sheet.columns.length : 0,
+            availableColumns: (sheet.columns || []).map((col: any, index: number) => {
+              const colName = col.name || `Column ${col.index !== undefined ? col.index + 1 : index + 1}`;
+              const colIndex = col.index !== undefined ? col.index : index;
+              return {
+                name: colName,
+                letter: String.fromCharCode(65 + colIndex),
+                index: colIndex + 1,
+              };
+            }),
+          };
+          
+          console.log('Created sheet data:', sheetData);
+          return sheetData;
+        });
+        
+        console.log('Setting available sheets:', convertedSheets);
         setAvailableSheets(convertedSheets);
       } else {
         throw new Error(data.error || 'Failed to fetch sheets');
@@ -280,13 +308,21 @@ export default function ManageSheetTabsModal({ clientConnection, onClose, onSucc
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setNewTab(prev => ({ ...prev, [field]: value }));
-    
-    // When sheet is selected, find the sheet object and auto-generate collection name
-    if (field === 'tabName') {
+    if (field === 'tabName' && value) {
+      // Find the selected sheet from availableSheets when tabName changes
       const sheet = availableSheets.find(s => s.sheetName === value);
-      setSelectedSheet(sheet || null);
-      
+      if (sheet) {
+        setSelectedSheet(sheet);
+        // Reset selected columns and key column when sheet changes
+        setNewTab(prev => ({
+          ...prev,
+          [field]: value,
+          selectedColumns: [],
+          keyColumn: ''
+        }));
+        setAllColumnsSelected(false);
+        return;
+      }
       const collectionName = value
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '_')
@@ -486,25 +522,27 @@ export default function ManageSheetTabsModal({ clientConnection, onClose, onSucc
                   const syncResult = syncResults.get(tab.id);
                   
                   return (
-                    <div key={tab.id} className="bg-white border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-3">
+                    <div key={tab.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
+                      <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-1">
-                            <span className="font-medium text-gray-900">{tab.sheetName}</span>
+                            <span className="font-medium text-gray-900">{tab.sheetName || (tab as any).tabName || (tab as any).name || 'Untitled'}</span>
                             <span className="text-gray-400">→</span>
                             <span className="text-blue-600">{tab.collectionName}</span>
                             <Check size={16} className="text-green-600" />
                           </div>
                           <p className="text-sm text-gray-600">
-                            Key Column: <span className="font-mono bg-gray-100 px-2 py-1 rounded">{tab.keyColumn}</span>
+                            Key Column: <span className="font-mono bg-gray-100 px-2 py-1 rounded">{tab.keyColumn || '—'}</span>
                           </p>
                           <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
-                            <span>Created: {tab.createdAt.toDate().toLocaleDateString()}</span>
-                            {tab.lastSyncAt && (
-                              <span>Last sync: {tab.lastSyncAt.toDate().toLocaleString()}</span>
+                            {tab.createdAt && typeof (tab.createdAt as any).toDate === 'function' && (
+                              <span>Created: {(tab.createdAt as any).toDate().toLocaleDateString()}</span>
                             )}
-                            {tab.recordCount !== undefined && (
-                              <span>Records: {tab.recordCount}</span>
+                            {tab.lastSyncAt && typeof (tab.lastSyncAt as any).toDate === 'function' && (
+                              <span>Last sync: {(tab.lastSyncAt as any).toDate().toLocaleString()}</span>
+                            )}
+                            {typeof tab.recordCount === 'number' && (
+                              <span>Records: {tab.recordCount.toLocaleString()}</span>
                             )}
                           </div>
                         </div>
@@ -592,7 +630,7 @@ export default function ManageSheetTabsModal({ clientConnection, onClose, onSucc
                               </p>
                               {syncResult.success && syncResult.syncedCount !== undefined && (
                                 <div className="flex flex-col space-y-1 mt-2 text-xs text-green-600">
-                                  <div className="flex items-center space-x-4">
+                                  <div className="flex items-center space-x-2 ml-4">
                                     <span>✓ Synced: {syncResult.syncedCount} records</span>
                                     {syncResult.skippedCount !== undefined && syncResult.skippedCount > 0 && (
                                       <span className="text-yellow-600">⚠ Skipped: {syncResult.skippedCount} rows</span>

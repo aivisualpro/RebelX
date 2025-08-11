@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState } from "react"
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
+import React from "react"
+import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
 
 import {
   Card,

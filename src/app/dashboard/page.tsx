@@ -9,8 +9,8 @@ import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import { Menu, X, Filter } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AnalyticsData, DashboardFilters, SalesDataPoint, RevenueRingEntry } from '@/types/analytics';
-import { getFilterSummary, readCookie } from '@/utils/dateUtils';
+import { AnalyticsData, DashboardFilters } from '@/types/analytics';
+import { getFilterSummary, readCookie, getDateRangeForFilter } from '@/utils/dateUtils';
 
 
 
@@ -39,6 +39,9 @@ function DashboardContent() {
   const firstFilterFieldRef = useRef<HTMLSelectElement>(null);
   const { region, setRegion, allowedRegions, isLoading: stateLoading, refreshFromStorage } = useAppState();
   
+  // Extract companyId once to prevent unnecessary re-renders
+  const companyId = searchParams.get('companyId') || readCookie('companyId') || 'booking-plus';
+  
   // Refresh state when component mounts to ensure latest data
   useEffect(() => {
     refreshFromStorage();
@@ -46,39 +49,33 @@ function DashboardContent() {
 
   // Check if current user is admin and fetch user name
   useEffect(() => {
-    const checkAdminStatus = () => {
+    const initializeUserData = async () => {
       try {
         const userEmail = localStorage.getItem('userEmail');
+        
+        // Set admin status
         setIsAdmin(userEmail === 'admin@aivisualpro.com');
-      } catch (error) {
-        console.error('Error checking admin status:', error);
-        setIsAdmin(false);
-      }
-    };
-
-    const fetchUserName = async () => {
-      try {
-        const userEmail = localStorage.getItem('userEmail');
+        
+        // Fetch user name only if we have userEmail and companyData
         if (userEmail && companyData) {
           // Fetch user name from the database using the email
           const response = await fetch(`/api/user-name?email=${encodeURIComponent(userEmail)}&region=${region}`);
           if (response.ok) {
             const data = await response.json();
-            setUserName(data.name || userEmail.split('@')[0]); // Fallback to email prefix if name not found
+            setUserName(data.name);
           } else {
-            setUserName(userEmail.split('@')[0]); // Fallback to email prefix
+            console.error('Failed to fetch user name');
+            setUserName('User');
           }
         }
       } catch (error) {
-        console.error('Error fetching user name:', error);
-        const userEmail = localStorage.getItem('userEmail');
-        setUserName(userEmail ? userEmail.split('@')[0] : 'User');
+        console.error('Error initializing user data:', error);
+        setUserName('User');
       }
     };
 
-    checkAdminStatus();
-    fetchUserName();
-  }, [region, companyData]);
+    initializeUserData();
+  }, [companyData, region]);
 
   // Click outside to close menu and filters
   useEffect(() => {
@@ -99,14 +96,15 @@ function DashboardContent() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isMenuOpen, isFiltersOpen]);
-  const analyticsCache = useRef<Record<string, any>>({});
+  const analyticsCache = useRef<Record<string, AnalyticsData>>({});
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    const companyId = searchParams.get('companyId');
+    // Prevent reloading if companyData is already loaded
+    if (companyData || isLoading === false) return;
     
     if (companyId) {
-      // Load company data from the URL parameter
+      // Load company data from the URL parameter with faster loading
       companyService.getCompanyData(companyId)
         .then(data => {
           setCompanyData(data);
@@ -120,7 +118,7 @@ function DashboardContent() {
       // No company ID, redirect to auth
       router.push('/auth');
     }
-  }, [searchParams, router]);
+  }, [companyId, router, companyData, isLoading]);
 
   // Filter state for the filter bar
   const [filters, setFilters] = useState<DashboardFilters>({ 
@@ -132,45 +130,41 @@ function DashboardContent() {
     artist: '', 
     bookPlus: '' 
   });
-
   useEffect(() => {
-    const companyId = searchParams.get('companyId') || readCookie('companyId') || 'booking-plus';
     if (!companyId) return;
-    // Compute date range
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const format = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-    let startDate = '';
-    let endDate = '';
-    if (filters.range === 'this_month') {
-      const sd = new Date(now.getFullYear(), now.getMonth(), 1);
-      const ed = new Date(now.getFullYear(), now.getMonth()+1, 0);
-      startDate = format(sd); endDate = format(ed);
-    } else if (filters.range === 'last_month') {
-      const sd = new Date(now.getFullYear(), now.getMonth()-1, 1);
-      const ed = new Date(now.getFullYear(), now.getMonth(), 0);
-      startDate = format(sd); endDate = format(ed);
-    } else if (filters.range === 'this_year') {
-      const sd = new Date(now.getFullYear(), 0, 1);
-      const ed = new Date(now.getFullYear(), 11, 31);
-      startDate = format(sd); endDate = format(ed);
-    }
-    const params = new URLSearchParams({ clientId: companyId, connectionId: region, sheetTabId: 'booking_x' });
-    if (filters.range !== 'all') { params.set('startDate', startDate); params.set('endDate', endDate); }
-    if (filters.location) params.set('location', filters.location);
-    if (filters.bookedBy) params.set('bookedBy', filters.bookedBy);
-    if (filters.receptionist) params.set('receptionist', filters.receptionist);
-    if (filters.branchManager) params.set('branchManager', filters.branchManager);
-    if (filters.artist) params.set('artist', filters.artist);
-    if (filters.bookPlus) params.set('bookPlus', filters.bookPlus);
+    
+    if (!region) return;
+    
     const cacheKey = `${region}|${filters.range}|${filters.location}|${filters.bookedBy}|${filters.receptionist}|${filters.branchManager}|${filters.artist}|${filters.bookPlus}`;
+    
+    // Return cached data immediately if available
     if (analyticsCache.current[cacheKey]) {
       setAnalytics(analyticsCache.current[cacheKey]);
+      return;
     }
-    try {
+    
+    // Debounce API calls to prevent excessive requests
+    const timeoutId = setTimeout(() => {
+      // Compute date range using utility function for better performance
+      const { startDate, endDate } = getDateRangeForFilter(filters.range);
+      
+      const params = new URLSearchParams({ clientId: companyId, connectionId: region, sheetTabId: 'booking_x' });
+      if (filters.range !== 'all' && startDate && endDate) { 
+        params.set('startDate', startDate); 
+        params.set('endDate', endDate); 
+      }
+      if (filters.location) params.set('location', filters.location);
+      if (filters.bookedBy) params.set('bookedBy', filters.bookedBy);
+      if (filters.receptionist) params.set('receptionist', filters.receptionist);
+      if (filters.branchManager) params.set('branchManager', filters.branchManager);
+      if (filters.artist) params.set('artist', filters.artist);
+      if (filters.bookPlus) params.set('bookPlus', filters.bookPlus);
+      
+      // Cancel previous request
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
+      
       fetch(`/api/analytics?${params.toString()}`, { signal: controller.signal })
         .then(res => res.json())
         .then(data => {
@@ -180,10 +174,10 @@ function DashboardContent() {
         .catch(err => {
           if (err?.name !== 'AbortError') setAnalytics(null);
         });
-    } catch {
-      // ignore
-    }
-  }, [searchParams, filters, region]);
+    }, 300); // 300ms debounce
+    
+    return () => clearTimeout(timeoutId);
+  }, [filters.range, filters.location, filters.bookedBy, filters.receptionist, filters.branchManager, filters.artist, filters.bookPlus, region]);
 
   // Keep URL query params in sync with filters for sharable/refresh persistence
   useEffect(() => {
@@ -353,16 +347,7 @@ function DashboardContent() {
                 {isAdmin && (
                   <Link href={`/connections?companyId=${searchParams.get('companyId')}`} className="block px-4 py-2 hover:bg-slate-50">Connections</Link>
                 )}
-                <div className="group relative">
-                  <button className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center justify-between">
-                    <span>Reports</span>
-                    <span>›</span>
-                  </button>
-                  <div className="hidden group-hover:block absolute top-0 right-full mr-1 w-48 bg-white border border-slate-200 rounded-xl shadow-xl py-2">
-                    <Link href="/reports#users" className="block px-4 py-2 hover:bg-slate-50">Users</Link>
-                    <Link href="/reports#services" className="block px-4 py-2 hover:bg-slate-50">Services</Link>
-                  </div>
-                </div>
+                <Link href={`/reports?companyId=${searchParams.get('companyId')}`} className="block px-4 py-2 hover:bg-slate-50">Reports</Link>
                 
                 {/* Language Selection */}
                 <div className="group relative">
@@ -482,7 +467,7 @@ function DashboardContent() {
               {/* Book Plus */}
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-700 w-28">Book Plus</span>
-                <select value={filters.bookPlus} onChange={e => setFilters(prev => ({ ...prev, bookPlus: e.target.value as any }))} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white">
+                <select value={filters.bookPlus} onChange={e => setFilters(prev => ({ ...prev, bookPlus: e.target.value }))} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white">
                   <option value="">All</option>
                   <option value="yes">Yes</option>
                   <option value="no">No</option>
@@ -574,15 +559,15 @@ function DashboardContent() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
               <div className="text-slate-500 text-sm">Total Paid</div>
-              <div className="text-2xl font-bold text-slate-900 mt-2">{Math.round(analytics.kpis.totalPaid).toLocaleString()} SAR</div>
+              <div className="text-2xl font-bold text-slate-900 mt-2">{Math.round(analytics.kpis.totalPaid).toLocaleString()}</div>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
               <div className="text-slate-500 text-sm">Total Discounts</div>
-              <div className="text-2xl font-bold text-slate-900 mt-2">{Math.round(analytics.kpis.totalDiscounts).toLocaleString()} SAR</div>
+              <div className="text-2xl font-bold text-slate-900 mt-2">{Math.round(analytics.kpis.totalDiscounts).toLocaleString()}</div>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
               <div className="text-slate-500 text-sm">Outstanding Due</div>
-              <div className="text-2xl font-bold text-slate-900 mt-2">{Math.round(analytics.kpis.totalOutstandingDue).toLocaleString()} SAR</div>
+              <div className="text-2xl font-bold text-slate-900 mt-2">{Math.round(analytics.kpis.totalOutstandingDue).toLocaleString()}</div>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
               <div className="text-slate-500 text-sm">Artists</div>
@@ -639,10 +624,10 @@ function DashboardContent() {
                 </div>
                 <div>
                   <div className="text-sm font-medium text-amber-900">Average Order Value</div>
-                  <div className="text-xs text-amber-600">Target: {'>'}250 SAR</div>
+                  <div className="text-xs text-amber-600">Target: {'>'}250</div>
                 </div>
               </div>
-              <div className="text-3xl font-bold text-amber-900 mb-3">{Math.round(analytics.kpis.averageOrderValue)} SAR</div>
+              <div className="text-3xl font-bold text-amber-900 mb-3">{Math.round(analytics.kpis.averageOrderValue)}</div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-amber-700">
                   {analytics.kpis.averageOrderValue >= 250 ? 'Good' : analytics.kpis.averageOrderValue >= 200 ? 'Fair' : 'Warning'}
@@ -872,9 +857,7 @@ function DashboardContent() {
                         <text x={cx} y={cy + 8} textAnchor="middle" className="fill-slate-900 text-sm font-bold">
                           {Math.round(total).toLocaleString()}
                         </text>
-                        <text x={cx} y={cy + 20} textAnchor="middle" className="fill-slate-500 text-xs">
-                          SAR
-                        </text>
+                        
                       </svg>
                     </div>
                     

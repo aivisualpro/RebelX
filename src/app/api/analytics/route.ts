@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { collection, getDocs, doc, getDoc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+
+// In-memory cache for analytics data
+const analyticsCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
+
+// Helper function to get cache key
+function getCacheKey(params: URLSearchParams): string {
+  const keys = ['clientId', 'connectionId', 'sheetTabId', 'startDate', 'endDate', 'bookedBy', 'receptionist', 'branchManager', 'artist', 'bookPlus', 'location'];
+  return keys.map(key => `${key}=${params.get(key) || ''}`).join('&');
+}
 
 function sanitizeKey(header: string): string {
   return header
@@ -57,7 +67,7 @@ export async function GET(request: NextRequest) {
     const clientId = searchParams.get('clientId');
     const connectionId = searchParams.get('connectionId') || 'saudi1';
     const sheetTabId = searchParams.get('sheetTabId') || 'booking_x';
-    const limitParam = parseInt(searchParams.get('limit') || '1000000');
+    const limitParam = parseInt(searchParams.get('limit') || '10000'); // Reduced default limit for better performance
     const startDate = searchParams.get('startDate'); // YYYY-MM-DD
     const endDate = searchParams.get('endDate'); // YYYY-MM-DD
     const bookedByFilter = searchParams.get('bookedBy');
@@ -79,9 +89,17 @@ export async function GET(request: NextRequest) {
     }
     const tabData = tabSnap.data() as any;
 
+    // Check cache first
+    const cacheKey = getCacheKey(searchParams);
+    const cached = analyticsCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+      console.log('Returning cached analytics data');
+      return NextResponse.json(cached.data);
+    }
+
     const recordsRef = collection(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs', sheetTabId, 'records');
-    // Order newest first; Firestore will cap; we still iterate
-    const qRecords = query(recordsRef, orderBy('syncedAt', 'desc'));
+    // Order newest first with limit for better performance
+    const qRecords = query(recordsRef, orderBy('syncedAt', 'desc'), limit(limitParam));
     const snap = await getDocs(qRecords);
 
     const records: any[] = [];
@@ -269,7 +287,7 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, value]) => ({ date, value }));
 
-    return NextResponse.json({
+    const responseData = {
       meta: {
         clientId, connectionId, sheetTabId,
         recordCount: totalBookings,
@@ -310,7 +328,13 @@ export async function GET(request: NextRequest) {
         bookPlus: ['yes', 'no'],
         location: Array.from(distinctLocations).sort(),
       },
-    });
+    };
+
+    // Cache the response
+    analyticsCache.set(cacheKey, { data: responseData, timestamp: Date.now() });
+    console.log('Analytics data cached for', cacheKey);
+
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error('Analytics error:', error);
     return NextResponse.json({ error: 'Failed to compute analytics' }, { status: 500 });
