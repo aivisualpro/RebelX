@@ -16,8 +16,8 @@ export default function Home() {
         const userEmail = localStorage.getItem('userEmail');
         
         if (companyId && allowedRegions && userEmail) {
-          // User is authenticated, redirect to dashboard
-          router.replace(`/dashboard?companyId=${companyId}`);
+          // User is authenticated, redirect to homepage
+          router.replace('/home');
         } else {
           // User is not authenticated, redirect to auth page
           router.replace('/auth');

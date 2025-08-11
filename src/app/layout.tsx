@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Booking Plus - Smart Booking Management Solution",
-  description: "The modern, intelligent spreadsheet platform for teams and individuals",
+  title: "RebelX - KPIs",
+  description: "The modern, intelligent platform for teams",
 };
 
 export default function RootLayout({

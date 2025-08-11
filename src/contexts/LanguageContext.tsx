@@ -39,10 +39,10 @@ const translations: Translations = {
     Arabic: 'القنوات',
     Egyptian: 'القنوات'
   },
-  'dashboard.bookingTypes': {
-    English: 'Booking Types',
-    Arabic: 'أنواع الحجز',
-    Egyptian: 'أنواع البوكينج'
+  'dashboard.rebelxTypes': {
+    English: 'RebelX Types',
+    Arabic: 'أنواع RebelX',
+    Egyptian: 'أنواع RebelX'
   },
   'dashboard.totalPaid': {
     English: 'Total Paid',

@@ -10,13 +10,11 @@ export async function GET(
   try {
     const { searchParams } = new URL(request.url);
     const { sheetTabId } = await params;
-    const clientId = searchParams.get('clientId');
-    const connectionId = searchParams.get('connectionId');
     const limit = parseInt(searchParams.get('limit') || '100');
 
-    if (!sheetTabId || !clientId || !connectionId) {
+    if (!sheetTabId) {
       return NextResponse.json(
-        { error: 'Sheet tab ID, client ID, and connection ID are required' },
+        { error: 'Sheet tab ID is required' },
         { status: 400 }
       );
     }
@@ -24,7 +22,7 @@ export async function GET(
     console.log('Fetching records for sheet tab:', sheetTabId);
 
     // First, verify the sheet tab exists
-    const sheetTabRef = doc(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs', sheetTabId);
+    const sheetTabRef = doc(db, 'sheetTabs', sheetTabId);
     const sheetTabDoc = await getDoc(sheetTabRef);
 
     if (!sheetTabDoc.exists()) {
@@ -34,10 +32,10 @@ export async function GET(
       );
     }
 
-    const sheetTabData = { id: sheetTabDoc.id, ...sheetTabDoc.data() } as any;
+    const sheetTabData: any = { id: sheetTabDoc.id, ...sheetTabDoc.data() };
 
-    // Get records from the nested collection
-    const recordsCollectionRef = collection(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs', sheetTabId, 'records');
+    // Get records from the top-level collection named after the sheet tab
+    const recordsCollectionRef = collection(db, sheetTabId);
     
     let recordsQuery = query(recordsCollectionRef);
     
@@ -53,7 +51,7 @@ export async function GET(
       id: doc.id,
       ...doc.data(),
       // Convert Firestore Timestamps to ISO strings for JSON serialization
-      syncedAt: doc.data().syncedAt?.toDate?.()?.toISOString() || doc.data().syncedAt,
+      syncedAt: doc.data().syncedAt || new Date().toISOString(),
     }));
 
     console.log(`Found ${records.length} records for sheet tab:`, sheetTabId);
@@ -62,15 +60,15 @@ export async function GET(
       success: true,
       records,
       sheetTabInfo: {
-        sheetName: sheetTabId,
-        collectionName: sheetTabId,
-        keyColumn: '',
+        sheetName: sheetTabData.sheetName || sheetTabId,
+        collectionName: sheetTabData.collectionName || sheetTabId,
+        keyColumn: sheetTabData.keyColumn || '',
         recordCount: records.length,
-        lastSyncAt: new Date().toISOString(),
-        originalHeaders: [],
-        headerOrder: [],
+        lastSyncAt: sheetTabData.lastSyncAt || new Date().toISOString(),
+        originalHeaders: sheetTabData.originalHeaders || [],
+        headerOrder: sheetTabData.headerOrder || [],
       },
-      storagePath: `clients/${clientId}/connections/${connectionId}/sheetTabs/${sheetTabId}/records`,
+      storagePath: `collections/${sheetTabId}/documents`,
       totalFound: records.length,
     });
 

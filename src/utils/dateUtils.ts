@@ -1,5 +1,5 @@
 /**
- * Date utility functions for Booking Plus
+ * Date utility functions for RebelX
  */
 
 import { DashboardFilters } from '@/types/analytics';

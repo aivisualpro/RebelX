@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Search for user in the user_manager records
-    const clientId = 'booking-plus'; // Default client ID
+    const clientId = 'rebelx'; // Default client ID
     const usersRef = collection(db, 'clients', clientId, 'connections', region, 'sheetTabs', 'user_manager', 'records');
     
     // Use single query with OR condition for better performance

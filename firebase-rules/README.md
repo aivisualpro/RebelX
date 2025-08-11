@@ -1,6 +1,6 @@
 # Firebase Security Rules
 
-This folder contains the security rules for Firebase services used in Booking Plus.
+This folder contains the security rules for Firebase services used in RebelX.
 
 ## Current Rules
 

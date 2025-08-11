@@ -13,54 +13,90 @@ export async function GET(
 
     console.log('Fetching sheets for connection:', connectionId);
 
-    // First, find which client this connection belongs to
-    // We need to search through all clients to find the connection
-    const clientsQuery = query(collection(db, 'clients'));
-    const clientsSnapshot = await getDocs(clientsQuery);
-    
-    let connectionDoc = null;
+    let connection = null;
     let parentClientId = null;
     
-    for (const clientDocSnap of clientsSnapshot.docs) {
-      const connectionRef = doc(db, 'clients', clientDocSnap.id, 'connections', connectionId);
-      const connDoc = await getDoc(connectionRef);
-      if (connDoc.exists()) {
-        connectionDoc = connDoc;
-        parentClientId = clientDocSnap.id;
-        break;
+    // Handle the special 'default' connection case
+    if (connectionId === 'default') {
+      // For the default connection, read from environment variables
+      connection = {
+        name: 'Default Connection',
+        projectId: 'default',
+        spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
+        serviceAccountKeyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+      };
+      parentClientId = 'default';
+      
+      // Validate that required environment variables are set
+      if (!connection.spreadsheetId || !connection.serviceAccountKeyFile) {
+        return NextResponse.json(
+          { error: 'Missing required environment variables: GOOGLE_SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_KEY' },
+          { status: 500 }
+        );
       }
+    } else {
+      // For other connections, search through all clients to find the connection
+      const clientsQuery = query(collection(db, 'clients'));
+      const clientsSnapshot = await getDocs(clientsQuery);
+      
+      let connectionDoc = null;
+      
+      for (const clientDocSnap of clientsSnapshot.docs) {
+        const connectionRef = doc(db, 'clients', clientDocSnap.id, 'connections', connectionId);
+        const connDoc = await getDoc(connectionRef);
+        if (connDoc.exists()) {
+          connectionDoc = connDoc;
+          parentClientId = clientDocSnap.id;
+          break;
+        }
+      }
+      
+      if (!connectionDoc || !connectionDoc.exists()) {
+        return NextResponse.json(
+          { error: `Connection '${connectionId}' not found.` },
+          { status: 404 }
+        );
+      }
+      
+      connection = connectionDoc.data();
     }
-    
-    if (!connectionDoc || !connectionDoc.exists()) {
-      return NextResponse.json(
-        { error: 'Connection not found' },
-        { status: 404 }
-      );
-    }
-
-    const connection = connectionDoc.data();
     
     try {
-      // For development, we'll use the service account key stored in the connection
-      // In production, you'd want to retrieve from Secret Manager
+      // For the default connection, get service account key from environment variables
+      // For other connections, use the existing logic
       let serviceAccountKey;
       
-      try {
-        // Try to get from Secret Manager first
-        const serviceAccountKeyData = await secretManagerService.getSecret(
-          connection.projectId,
-          connection.secretName
-        );
-        serviceAccountKey = JSON.parse(serviceAccountKeyData);
-      } catch (error) {
-        console.warn('Failed to retrieve from Secret Manager, checking for stored key in connection');
-        
-        // For development, check if we have the key stored directly
-        // This is NOT recommended for production
-        if (connection.serviceAccountKeyFile) {
-          serviceAccountKey = JSON.parse(connection.serviceAccountKeyFile);
+      if (connectionId === 'default') {
+        // Read service account key from environment variable
+        const serviceAccountKeyEnv = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+        if (serviceAccountKeyEnv) {
+          try {
+            serviceAccountKey = JSON.parse(serviceAccountKeyEnv);
+          } catch (error) {
+            throw new Error('Invalid JSON in GOOGLE_SERVICE_ACCOUNT_KEY environment variable');
+          }
         } else {
-          throw new Error('No service account key available');
+          throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY environment variable not set');
+        }
+      } else {
+        // For other connections, use existing Secret Manager logic
+        try {
+          // Try to get from Secret Manager first
+          const serviceAccountKeyData = await secretManagerService.getSecret(
+            connection.projectId,
+            connection.secretName
+          );
+          serviceAccountKey = JSON.parse(serviceAccountKeyData);
+        } catch (error) {
+          console.warn('Failed to retrieve from Secret Manager, checking for stored key in connection');
+          
+          // For development, check if we have the key stored directly
+          // This is NOT recommended for production
+          if (connection.serviceAccountKeyFile) {
+            serviceAccountKey = JSON.parse(connection.serviceAccountKeyFile);
+          } else {
+            throw new Error('No service account key available');
+          }
         }
       }
 

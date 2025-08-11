@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Building, Upload, FileText } from 'lucide-react';
-import { companyService } from '@/lib/auth';
+
+import { auth } from '@/lib/firebase';
 
 export default function AuthPage() {
   const router = useRouter();
@@ -45,70 +46,55 @@ export default function AuthPage() {
     setError('');
 
     try {
-      if (isSignUp) {
-        // Validate required fields for company creation
-        if (!formData.companyName || !logoFile || !formData.description || 
-            !formData.adminName || !formData.adminEmail || !formData.adminPassword) {
-          throw new Error('All fields are required for company creation');
-        }
+      // Sign in only - no signup functionality
+      // Sign in - validate email and password
+      if (!formData.email || !formData.password) {
+        throw new Error('Email and password are required');
+      }
 
-        // Create company
-        const { companyId } = await companyService.createCompany({
-          companyName: formData.companyName,
-          description: formData.description,
-          logo: logoFile,
-          adminName: formData.adminName,
-          adminEmail: formData.adminEmail,
-          adminPassword: formData.adminPassword,
-        });
-        
-        // Store in cookie (simple session) and redirect
-        document.cookie = `companyId=${companyId}; path=/; max-age=${60*60*24*7}`;
-        router.push(`/dashboard?companyId=${companyId}`);
-      } else {
-        // Sign in - validate email and password
-        if (!formData.email || !formData.password) {
-          throw new Error('Email and password are required');
-        }
-
-        try {
-          // Authenticate against either 'saudi1' or 'egypt1' user_manager records by email/password
-          const authResult = await companyService.signIn({
-            email: formData.email,
-            password: formData.password,
-          });
+      try {
+          // Import Firebase auth methods dynamically
+          const { signInWithEmailAndPassword } = await import('firebase/auth');
+          
+          // Authenticate with Firebase Authentication
+          await signInWithEmailAndPassword(auth, formData.email, formData.password);
+          
+          // For Firebase Auth, we'll use a fixed companyId
+          const companyId = 'rebelx';
           
           // Store in cookie
-          document.cookie = `companyId=${authResult.companyId}; path=/; max-age=${60*60*24*7}`;
-          // Persist allowedRegions and set initial region
-          localStorage.setItem('allowedRegions', JSON.stringify(authResult.allowedRegions));
+          document.cookie = `companyId=${companyId}; path=/; max-age=${60*60*24*7}`;
+          // Set fixed allowedRegions for Firebase Auth
+          const allowedRegions = ['saudi1', 'egypt1'];
+          localStorage.setItem('allowedRegions', JSON.stringify(allowedRegions));
           // IMPORTANT: Always use first allowed region as initial
-          localStorage.setItem('region', authResult.allowedRegions[0]);
+          localStorage.setItem('region', allowedRegions[0]);
           // Store user email for access control
           localStorage.setItem('userEmail', formData.email);
           
           // Trigger storage event to immediately update AppStateProvider
           window.dispatchEvent(new StorageEvent('storage', {
             key: 'allowedRegions',
-            newValue: JSON.stringify(authResult.allowedRegions),
+            newValue: JSON.stringify(allowedRegions),
             oldValue: null,
             storageArea: localStorage
           }));
           
           // Navigate only after success
-          router.push(`/dashboard?companyId=${authResult.companyId}`);
+          router.push('/home');
         } catch (e: any) {
-          // Handle authentication errors gracefully
-          if (e.message === 'Invalid password') {
+          // Handle Firebase authentication errors
+          if (e.code === 'auth/wrong-password') {
             setError('Incorrect password. Please try again.');
-          } else if (e.message === 'Email not found in any region') {
+          } else if (e.code === 'auth/user-not-found') {
             setError('Email not found. Please check your email address.');
+          } else if (e.code === 'auth/invalid-email') {
+            setError('Invalid email format. Please check your email address.');
           } else {
-            setError(e.message || 'Invalid email or password');
+            setError(e.message || 'Authentication failed');
           }
           return; // Don't rethrow - we want to stay on auth page
         }
-      }
     } catch (error: any) {
       console.error('Error:', error);
       setError(error.message || 'Operation failed');
@@ -313,7 +299,7 @@ export default function AuthPage() {
 
         {/* Footer */}
         <div className="text-center mt-8 text-slate-500 text-sm">
-          <p>© 2025 BookingX. All rights reserved.</p>
+          <p>© 2025 RebelX. All rights reserved.</p>
         </div>
       </div>
     </div>

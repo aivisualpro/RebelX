@@ -5,7 +5,10 @@ import { db } from '@/lib/firebase';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { clientId, connectionId, sheetTabs: sheetTabData, createdBy } = body;
+    // For direct sheet tab creation, we'll use default IDs since we're not using client connections
+    const { sheetTabs: sheetTabData, createdBy } = body;
+    const clientId = body.clientId || 'default';
+    const connectionId = body.connectionId || 'default';
 
     console.log('Received sheet tabs creation request:', { 
       clientId, 
@@ -15,9 +18,9 @@ export async function POST(request: NextRequest) {
     });
 
     // Validate required fields
-    if (!clientId || !connectionId || !sheetTabData || !createdBy) {
+    if (!sheetTabData || !createdBy) {
       return NextResponse.json(
-        { error: 'Missing required fields: clientId, connectionId, sheetTabs, and createdBy are all required' },
+        { error: 'Missing required fields: sheetTabs and createdBy are required' },
         { status: 400 }
       );
     }
@@ -27,28 +30,6 @@ export async function POST(request: NextRequest) {
         { error: 'No sheet tabs to create' },
         { status: 400 }
       );
-    }
-
-    // Verify that the client exists, create if it doesn't
-    const clientRef = doc(db, 'clients', clientId);
-    const clientDoc = await getDoc(clientRef);
-    
-    let clientData;
-    if (!clientDoc.exists()) {
-      // Create the client on-the-fly if it doesn't exist
-      console.log('Client not found, creating client record for:', clientId);
-      clientData = {
-        companyId: clientId, // Use clientId as companyId for proper mapping
-        name: 'Auto-created Client',
-        adminEmail: `${clientId}@example.com`,
-        adminPassword: 'temp',
-        createdAt: Timestamp.now(),
-        createdBy: 'system-auto',
-        status: 'active'
-      };
-      await setDoc(clientRef, clientData);
-    } else {
-      clientData = clientDoc.data();
     }
 
     // Validate that each sheet tab has a keyColumn
@@ -63,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     const collectionsCreated = [];
 
-    // Create each sheet tab in Firebase under the connection
+    // Create each sheet tab as a top-level collection in Firebase
     for (const sheetTab of sheetTabData) {
       // Normalize and ensure selected columns include the key column
       const incomingSelected: string[] = Array.isArray(sheetTab.selectedColumns)
@@ -79,7 +60,7 @@ export async function POST(request: NextRequest) {
       const sheetTabDoc = {
         clientId,
         connectionId,
-        companyId: clientData.companyId || clientId, // Fallback to clientId if companyId is undefined
+        // companyId is no longer needed for direct sheet tab creation
         sheetName: sheetTab.sheetName,
         collectionName: sheetTab.collectionName || sheetTab.sheetName.toLowerCase().replace(/\s+/g, '_'),
         keyColumn: sheetTab.keyColumn, // CRITICAL: This column must contain values that match Firebase document IDs
@@ -93,28 +74,23 @@ export async function POST(request: NextRequest) {
         selectedColumns: Array.from(selectedColumnsSet),
       };
 
-      // Add sheet tab to Firestore under the nested path: clients/{clientId}/connections/{connectionId}/sheetTabs
-      // Use collectionName as the document ID so path becomes .../sheetTabs/{collectionName}
-      const sheetTabsCollectionRef = collection(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs');
+      // Add sheet tab to Firestore as a top-level collection
+      // Use collectionName as the document ID so path becomes sheetTabs/{collectionName}
+      const sheetTabsCollectionRef = collection(db, 'sheetTabs');
       const sheetTabRef = doc(sheetTabsCollectionRef, sheetTabDoc.collectionName);
       await setDoc(sheetTabRef, sheetTabDoc, { merge: true });
 
       collectionsCreated.push({
-        id: sheetTabRef.id,
-        collectionName: sheetTabDoc.collectionName,
+        id: sheetTabDoc.collectionName,
         sheetName: sheetTabDoc.sheetName,
-        keyColumn: sheetTabDoc.keyColumn,
-        message: `Collection '${sheetTabDoc.collectionName}' ready for sync. Key column '${sheetTabDoc.keyColumn}' will be used as document ID.`
+        collectionName: sheetTabDoc.collectionName,
       });
 
-      console.log('Sheet tab created successfully:', sheetTabRef.id);
+      console.log('Created sheet tab as top-level collection:', sheetTabDoc.sheetName, '→', sheetTabDoc.collectionName);
     }
 
-    console.log('Created sheet tabs successfully:', collectionsCreated.length);
-
-    return NextResponse.json({
-      message: 'Sheet tabs created successfully',
-      count: collectionsCreated.length,
+    return NextResponse.json({ 
+      success: true, 
       collectionsCreated,
       notice: 'Each sheet will sync with Firebase collection using the specified key column as document IDs'
     });
@@ -138,77 +114,29 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get('companyId');
-    const clientId = searchParams.get('clientId');
-    const connectionId = searchParams.get('connectionId');
-
-    if (!clientId) {
-      return NextResponse.json({ error: 'Client ID is required' }, { status: 400 });
-    }
+    const clientId = searchParams.get('clientId') || 'default';
+    const connectionId = searchParams.get('connectionId') || 'default';
 
     console.log('Fetching sheet tabs for:', { companyId, clientId, connectionId });
 
-    interface SheetTabData {
-      id: string;
-      sheetTitle: string;
-      sheetId: number;
-      isActive?: boolean;
-      createdAt: any;
-      lastSyncAt?: any;
-    }
-
-    let sheetTabs: SheetTabData[] = [];
-
-    if (connectionId) {
-      // Get sheet tabs for a specific connection
-      const sheetTabsCollectionRef = collection(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs');
-      const snapshot = await getDocs(sheetTabsCollectionRef);
-      
-      sheetTabs = snapshot.docs.map(doc => {
-        const d = doc.data();
-        return {
-          id: doc.id,
-          // Provide both sheetName and sheetTitle for backward compatibility
-          sheetName: d.sheetName || doc.id,
-          sheetTitle: d.sheetName || doc.id,
-          collectionName: d.collectionName,
-          keyColumn: d.keyColumn,
-          recordCount: typeof d.recordCount === 'number' ? d.recordCount : 0,
-          isActive: d.isActive !== false,
-          createdAt: d.createdAt?.toDate().toISOString(),
-          lastSyncAt: d.lastSyncAt?.toDate().toISOString() || null,
-        } as any;
-      });
-    } else {
-      // Get sheet tabs for all connections under a client
-      const connectionsRef = collection(db, 'clients', clientId, 'connections');
-      const connectionsSnapshot = await getDocs(connectionsRef);
-      
-      // For each connection, get its sheet tabs
-      const allSheetTabs = await Promise.all(
-        connectionsSnapshot.docs.map(async (connectionDoc) => {
-          const sheetTabsCollectionRef = collection(db, 'clients', clientId, 'connections', connectionDoc.id, 'sheetTabs');
-          const sheetTabsSnapshot = await getDocs(sheetTabsCollectionRef);
-          
-          return sheetTabsSnapshot.docs.map(doc => {
-            const d = doc.data();
-            return {
-              id: doc.id,
-              sheetName: d.sheetName || doc.id,
-              sheetTitle: d.sheetName || doc.id,
-              collectionName: d.collectionName,
-              keyColumn: d.keyColumn,
-              recordCount: typeof d.recordCount === 'number' ? d.recordCount : 0,
-              isActive: d.isActive !== false,
-              createdAt: d.createdAt?.toDate().toISOString(),
-              lastSyncAt: d.lastSyncAt?.toDate().toISOString() || null,
-            } as any;
-          });
-        })
-      );
-      
-      // Flatten the array of arrays
-      sheetTabs = allSheetTabs.flat();
-    }
+    // Get sheet tabs as top-level collections
+    const sheetTabsCollectionRef = collection(db, 'sheetTabs');
+    const snapshot = await getDocs(sheetTabsCollectionRef);
+    
+    const sheetTabs = snapshot.docs.map(doc => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        sheetName: d.sheetName || doc.id,
+        sheetTitle: d.sheetName || doc.id,
+        collectionName: d.collectionName,
+        keyColumn: d.keyColumn,
+        recordCount: typeof d.recordCount === 'number' ? d.recordCount : 0,
+        isActive: d.isActive !== false,
+        createdAt: d.createdAt?.toDate().toISOString(),
+        lastSyncAt: d.lastSyncAt?.toDate().toISOString() || null,
+      } as any;
+    });
 
     // Filter active tabs and sort by created date
     const filteredSheetTabs = sheetTabs

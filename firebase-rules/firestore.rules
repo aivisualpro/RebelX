@@ -1,4 +1,4 @@
-// Firestore Security Rules for Booking Plus - No Authentication
+// Firestore Security Rules for RebelX - No Authentication
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {

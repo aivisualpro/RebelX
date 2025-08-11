@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 // Update sheet tab configuration (e.g., selected columns, key column)
@@ -10,21 +10,23 @@ export async function PATCH(
   try {
     const { sheetTabId } = params;
     const body = await request.json();
-    const { clientId, connectionId, selectedColumns, keyColumn } = body as {
-      clientId: string;
-      connectionId: string;
+    // For direct sheet tab management, we'll use default IDs
+    const { selectedColumns, keyColumn } = body as {
       selectedColumns?: string[];
       keyColumn?: string;
     };
+    const clientId = body.clientId || 'default';
+    const connectionId = body.connectionId || 'default';
 
-    if (!sheetTabId || !clientId || !connectionId) {
+    if (!sheetTabId) {
       return NextResponse.json(
-        { error: 'sheetTabId, clientId and connectionId are required' },
+        { error: 'sheetTabId is required' },
         { status: 400 }
       );
     }
 
-    const tabRef = doc(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs', sheetTabId);
+    // Reference sheet tab as top-level collection
+    const tabRef = doc(db, 'sheetTabs', sheetTabId);
     const tabSnap = await getDoc(tabRef);
     if (!tabSnap.exists()) {
       return NextResponse.json({ error: 'Sheet tab not found' }, { status: 404 });
@@ -56,7 +58,7 @@ export async function PATCH(
   }
 }
 
-// Delete a sheet tab configuration (does not delete stored records)
+// Delete a sheet tab configuration and all related records
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { sheetTabId: string } }
@@ -64,22 +66,81 @@ export async function DELETE(
   try {
     const { searchParams } = new URL(request.url);
     const { sheetTabId } = params;
-    const clientId = searchParams.get('clientId');
-    const connectionId = searchParams.get('connectionId');
+    // For direct sheet tab management, we'll use default IDs
+    const clientId = searchParams.get('clientId') || 'default';
+    const connectionId = searchParams.get('connectionId') || 'default';
 
-    if (!sheetTabId || !clientId || !connectionId) {
+    if (!sheetTabId) {
       return NextResponse.json(
-        { error: 'sheetTabId, clientId and connectionId are required' },
+        { error: 'sheetTabId is required' },
         { status: 400 }
       );
     }
 
-    const tabRef = doc(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs', sheetTabId);
+    console.log('Starting delete process for sheet tab:', sheetTabId);
+
+    // Step 1: Get the sheet tab configuration to find the collection name
+    const tabRef = doc(db, 'sheetTabs', sheetTabId);
+    const tabSnap = await getDoc(tabRef);
+    
+    if (!tabSnap.exists()) {
+      return NextResponse.json({ error: 'Sheet tab not found' }, { status: 404 });
+    }
+
+    const tabData = tabSnap.data();
+    const collectionName = tabData.collectionName;
+    
+    console.log('Found sheet tab with collection:', collectionName);
+
+    // Step 2: Delete all records in the associated Firebase collection
+    let deletedRecordsCount = 0;
+    if (collectionName) {
+      const collectionRef = collection(db, collectionName);
+      const snapshot = await getDocs(collectionRef);
+      
+      console.log(`Found ${snapshot.docs.length} records to delete in collection: ${collectionName}`);
+      deletedRecordsCount = snapshot.docs.length;
+
+      if (snapshot.docs.length > 0) {
+        // Delete records in batches (Firebase supports up to 500 operations per batch)
+        const BATCH_SIZE = 500;
+        const batches = Math.ceil(snapshot.docs.length / BATCH_SIZE);
+        
+        for (let batchIndex = 0; batchIndex < batches; batchIndex++) {
+          const batch = writeBatch(db);
+          const startIndex = batchIndex * BATCH_SIZE;
+          const endIndex = Math.min(startIndex + BATCH_SIZE, snapshot.docs.length);
+          
+          console.log(`Deleting batch ${batchIndex + 1}/${batches} (records ${startIndex + 1}-${endIndex})...`);
+          
+          for (let i = startIndex; i < endIndex; i++) {
+            batch.delete(snapshot.docs[i].ref);
+          }
+          
+          await batch.commit();
+          console.log(`Batch ${batchIndex + 1} completed: ${endIndex - startIndex} records deleted`);
+        }
+        
+        console.log(`Successfully deleted all ${snapshot.docs.length} records from collection: ${collectionName}`);
+      }
+    }
+
+    // Step 3: Delete the sheet tab configuration
     await deleteDoc(tabRef);
-    return NextResponse.json({ success: true });
+    console.log('Sheet tab configuration deleted');
+
+    return NextResponse.json({ 
+      success: true,
+      message: `Database deleted successfully. Removed ${deletedRecordsCount} records from collection '${collectionName}'.`,
+      deletedRecords: deletedRecordsCount,
+      collectionName
+    });
   } catch (error) {
     console.error('Error deleting sheet tab:', error);
-    return NextResponse.json({ error: 'Failed to delete sheet tab' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Failed to delete sheet tab', 
+      details: error instanceof Error ? error.message : 'Unknown error' 
+    }, { status: 500 });
   }
 }
 

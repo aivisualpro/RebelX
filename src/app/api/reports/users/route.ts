@@ -19,7 +19,7 @@ function sanitizeKey(header: string): string {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const clientId = searchParams.get('clientId') || 'booking-plus';
+    const clientId = searchParams.get('clientId') || 'rebelx';
     const connectionId = searchParams.get('connectionId') || 'saudi1';
 
     if (!clientId) {

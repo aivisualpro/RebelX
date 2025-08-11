@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId');
     const connectionId = searchParams.get('connectionId') || 'saudi1';
-    const sheetTabId = searchParams.get('sheetTabId') || 'booking_x';
+    const sheetTabId = searchParams.get('sheetTabId') || 'rebelx';
     const limitParam = parseInt(searchParams.get('limit') || '10000'); // Reduced default limit for better performance
     const startDate = searchParams.get('startDate'); // YYYY-MM-DD
     const endDate = searchParams.get('endDate'); // YYYY-MM-DD
@@ -115,9 +115,9 @@ export async function GET(request: NextRequest) {
     const clientNameKey = key('Client Name');
     const locationKey = key('Location');
     const channelKey = key('How did you know us ?');
-    const bookingTypeKey = key('Nature Booking');
-    const bookingDateKey = key('Booking Date');
-    const bookingStatusKey = key('Booking Satus');
+    const rebelxTypeKey = key('Nature Booking');
+    const rebelxDateKey = key('Booking Date');
+    const rebelxStatusKey = key('Booking Satus');
     const totalBookPlusKey = key('Total Book Plus');
     const dueAmountKey = key('Due Amount');
     const totalPaidKey = key('Total Paid');
@@ -137,16 +137,16 @@ export async function GET(request: NextRequest) {
     const distinctClients = new Set<string>();
     const distinctLocations = new Set<string>();
     const distinctChannels = new Set<string>();
-    const distinctBookingTypes = new Set<string>();
+    const distinctRebelxTypes = new Set<string>();
     const statusCounts: Record<string, number> = {};
     const channelCounts: Record<string, number> = {};
     const typeCounts: Record<string, number> = {};
     const paymentSums: Record<string, number> = Object.fromEntries(paymentKeys.map(k => [k, 0]));
     const turnoverByDay: Record<string, number> = {};
     const revenueByLocation: Record<string, number> = {};
-    let bookingsWithUpsell = 0;
-    let paidInFullCount = 0;
-    let bookingsWithPaymentObligation = 0; // Count of bookings with Total_Book > 0
+    let rebelxWithUpsell = 0;
+    let rebelxPaidInFullCount = 0;
+    let rebelxWithPaymentObligation = 0; // Count of bookings with Total_Book > 0
     let totalPaidSum = 0;
     let totalDiscountSum = 0;
     let totalDueSum = 0;
@@ -168,7 +168,7 @@ export async function GET(request: NextRequest) {
     // Second pass: apply filters and aggregate
     for (const r of records) {
       // Build day key from booking date once
-      const keyDay = normalizeDate(r[bookingDateKey]);
+      const keyDay = normalizeDate(r[rebelxDateKey]);
 
       // Date range filter
       if (startDate && keyDay && keyDay < startDate) continue;
@@ -187,9 +187,9 @@ export async function GET(request: NextRequest) {
       
       // Count bookings with payment obligation (Total_Book > 0)
       if (amount > 0) {
-        bookingsWithPaymentObligation += 1;
+        rebelxWithPaymentObligation += 1;
         const due = toNumber(r[dueAmountKey]);
-        if (due === 0) paidInFullCount += 1;
+        if (due === 0) rebelxPaidInFullCount += 1;
       }
       
       if (r[clientNameKey]) distinctClients.add(String(r[clientNameKey]));
@@ -203,17 +203,17 @@ export async function GET(request: NextRequest) {
         distinctChannels.add(ch);
         channelCounts[ch] = (channelCounts[ch] || 0) + 1;
       }
-      if (r[bookingTypeKey]) {
-        const t = String(r[bookingTypeKey]);
-        distinctBookingTypes.add(t);
+      if (r[rebelxTypeKey]) {
+        const t = String(r[rebelxTypeKey]);
+        distinctRebelxTypes.add(t);
         typeCounts[t] = (typeCounts[t] || 0) + 1;
       }
-      if (r[bookingStatusKey]) {
-        const s = String(r[bookingStatusKey]);
+      if (r[rebelxStatusKey]) {
+        const s = String(r[rebelxStatusKey]);
         statusCounts[s] = (statusCounts[s] || 0) + 1;
       }
       const upsellValue = toNumber(r[totalBookPlusKey]);
-      if (upsellValue > 0) bookingsWithUpsell += 1;
+      if (upsellValue > 0) rebelxWithUpsell += 1;
       const due = toNumber(r[dueAmountKey]);
       totalDueSum += due;
       totalPaidSum += toNumber(r[totalPaidKey]);
@@ -234,13 +234,13 @@ export async function GET(request: NextRequest) {
       if (ratingVal > 0) { ratingSum += ratingVal; ratingCount += 1; }
     }
 
-    const totalBookings = records.length;
-    const averageOrderValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
+    const totalRebelx = records.length;
+    const averageOrderValue = totalRebelx > 0 ? totalRevenue / totalRebelx : 0;
     // Debug: Log all status values to see what we have
     console.log('Status counts:', statusCounts);
     
     // Find canceled bookings with case-insensitive matching and various spellings
-    const canceledCount = Object.entries(statusCounts).reduce((count, [status, num]) => {
+    const rebelxCanceledCount = Object.entries(statusCounts).reduce((count, [status, num]) => {
       const statusLower = status.toLowerCase();
       if (statusLower.includes('cancel') || statusLower.includes('cancelled') || statusLower.includes('canceled')) {
         console.log(`Found canceled status: "${status}" with count: ${num}`);
@@ -249,11 +249,11 @@ export async function GET(request: NextRequest) {
       return count;
     }, 0);
     
-    console.log('Total canceled count:', canceledCount);
-    const cancellationRate = totalBookings > 0 ? (canceledCount / totalBookings) * 100 : 0;
+    console.log('Total canceled count:', rebelxCanceledCount);
+    const cancellationRate = totalRebelx > 0 ? (rebelxCanceledCount / totalRebelx) * 100 : 0;
     console.log('Cancellation rate:', cancellationRate);
-    const upsellSuccess = totalBookings > 0 ? (bookingsWithUpsell / totalBookings) * 100 : 0;
-    const paymentSuccessRate = bookingsWithPaymentObligation > 0 ? (paidInFullCount / bookingsWithPaymentObligation) * 100 : 0;
+    const upsellSuccess = totalRebelx > 0 ? (rebelxWithUpsell / totalRebelx) * 100 : 0;
+    const paymentSuccessRate = rebelxWithPaymentObligation > 0 ? (rebelxPaidInFullCount / rebelxWithPaymentObligation) * 100 : 0;
     const averageManagerRating = ratingCount > 0 ? ratingSum / ratingCount : 0;
 
     // Calculate Business Health based on KPIs
@@ -290,14 +290,14 @@ export async function GET(request: NextRequest) {
     const responseData = {
       meta: {
         clientId, connectionId, sheetTabId,
-        recordCount: totalBookings,
+        recordCount: totalRebelx,
       },
       kpis: {
         totalRevenue,
         uniqueClients: distinctClients.size,
         totalLocations: distinctLocations.size,
         acquisitionChannels: distinctChannels.size,
-        bookingTypes: distinctBookingTypes.size,
+        bookingTypes: distinctRebelxTypes.size,
         paymentSuccessRate,
         averageOrderValue,
         cancellationRate,

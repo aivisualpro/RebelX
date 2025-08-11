@@ -19,65 +19,46 @@ export async function POST(
 
     console.log('Starting sync for sheet tab:', sheetTabId);
 
-    // Step 1: Get the sheet tab configuration
-    // We need to find the sheet tab in the nested structure: clients/{clientId}/connections/{connectionId}/sheetTabs/{sheetTabId}
-    // Since we only have the sheetTabId, we need to search for it
-    
-    let sheetTabData: any = null;
-    let clientId: string = '';
-    let connectionId: string = '';
-    
-    // This is a simplified approach - in a real app, you might want to store the path or use a more efficient query
-    // For now, we'll get the clientId and connectionId from the request body or headers
-    const body = await request.json();
-    clientId = body.clientId;
-    connectionId = body.connectionId;
-
-    if (!clientId || !connectionId) {
-      return NextResponse.json(
-        { error: 'Client ID and Connection ID are required for sync' },
-        { status: 400 }
-      );
-    }
-
-    // Get the sheet tab by ID, then use sheetName for all paths
-    const sheetTabRefById = doc(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs', sheetTabId);
-    const sheetTabDoc = await getDoc(sheetTabRefById);
+    // Step 1: Get the sheet tab configuration from top-level collection
+    const sheetTabRef = doc(db, 'sheetTabs', sheetTabId);
+    const sheetTabDoc = await getDoc(sheetTabRef);
     if (!sheetTabDoc.exists()) {
       return NextResponse.json(
-        { error: 'Sheet tab not found by ID' },
+        { error: 'Sheet tab not found' },
         { status: 404 }
       );
     }
-    sheetTabData = { id: sheetTabDoc.id, ...sheetTabDoc.data() };
+    
+    const sheetTabData: any = { id: sheetTabDoc.id, ...sheetTabDoc.data() };
     console.log('Found sheet tab:', sheetTabData.sheetName, '→', sheetTabData.collectionName);
-    // Use collectionName as the Firestore document ID for the sheet tab path
-    const sheetTabPathName = sheetTabData.collectionName || sheetTabData.sheetName;
-    const sheetTabRef = doc(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs', sheetTabPathName);
 
-    // Step 2: Get the connection details to access Google Sheets
-    const connectionRef = doc(db, 'clients', clientId, 'connections', connectionId);
-    const connectionDoc = await getDoc(connectionRef);
+    // Step 2: Get Google Sheets connection details from environment variables
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+    const serviceAccountKeyEnv = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
 
-    if (!connectionDoc.exists()) {
+    if (!spreadsheetId) {
       return NextResponse.json(
-        { error: 'Connection not found' },
-        { status: 404 }
+        { error: 'GOOGLE_SPREADSHEET_ID environment variable not set' },
+        { status: 500 }
       );
     }
 
-    const connectionData = connectionDoc.data();
-    console.log('Found connection:', connectionData.name);
+    if (!serviceAccountKeyEnv) {
+      return NextResponse.json(
+        { error: 'GOOGLE_SERVICE_ACCOUNT_KEY environment variable not set' },
+        { status: 500 }
+      );
+    }
 
     // Step 3: Set up Google Sheets authentication
     let serviceAccountKey: any;
     
-    if (connectionData.serviceAccountKeyFile) {
-      serviceAccountKey = JSON.parse(connectionData.serviceAccountKeyFile);
-    } else {
+    try {
+      serviceAccountKey = JSON.parse(serviceAccountKeyEnv);
+    } catch (error) {
       return NextResponse.json(
-        { error: 'No service account key available for this connection' },
-        { status: 400 }
+        { error: 'Invalid JSON in GOOGLE_SERVICE_ACCOUNT_KEY environment variable' },
+        { status: 500 }
       );
     }
 
@@ -89,11 +70,11 @@ export async function POST(
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Step 4: Read data from Google Sheets
-    console.log('Reading data from spreadsheet:', connectionData.spreadsheetId, 'sheet:', sheetTabData.sheetName);
+    console.log('Reading data from spreadsheet:', spreadsheetId, 'sheet:', sheetTabData.sheetName);
     
     const range = `${sheetTabData.sheetName}!A:ZZ`; // Read all columns
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: connectionData.spreadsheetId,
+      spreadsheetId: spreadsheetId,
       range: range,
     });
 
@@ -137,70 +118,69 @@ export async function POST(
     console.log('Selected columns:', selectedColumns);
     console.log('Selected indices:', selectedIndices);
 
-    // Step 6: Sync data to Firebase collection (OPTIMIZED BATCH PROCESSING)
-    // Save records under a subcollection 'records' inside the sheet tab document
-    const targetCollectionRef = collection(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs', sheetTabPathName, 'records');
+    // Step 6: Sync data to Firebase collection
+    // Create or reference the target collection using the sheet tab's collectionName
+    const targetCollectionRef = collection(db, sheetTabData.collectionName);
+    console.log('Target Firebase collection:', sheetTabData.collectionName);
+
     let syncedCount = 0;
     let skippedCount = 0;
     let errorCount = 0;
     const errors: string[] = [];
     const skippedRows: string[] = [];
+    const validRows: { rowIndex: number; cleanKeyValue: string; documentData: Record<string, string> }[] = [];
 
-    console.log('Syncing to nested collection path:', `clients/${clientId}/connections/${connectionId}/sheetTabs/${sheetTabPathName}/records`);
-    console.log(`Starting optimized batch sync for ${dataRows.length} rows...`);
-
-    // Pre-process all rows to filter out invalid ones
-    const validRows: Array<{
-      rowIndex: number;
-      cleanKeyValue: string;
-      documentData: any;
-    }> = [];
-
-    console.log('Pre-processing rows...');
+    // Process each row
     for (let rowIndex = 0; rowIndex < dataRows.length; rowIndex++) {
-      const row = dataRows[rowIndex];
       try {
-        // Skip completely empty rows
-        const hasAnyData = row.some((cell: any) => 
-          cell !== undefined && cell !== null && cell.toString().trim() !== ''
-        );
-        if (!hasAnyData) {
+        const row = dataRows[rowIndex];
+        
+        // Skip empty rows
+        if (!row || row.length === 0 || row.every(cell => !cell || cell.toString().trim() === '')) {
           skippedCount++;
-          skippedRows.push(`Row ${rowIndex + 2}: Completely empty row`);
+          skippedRows.push(`Row ${rowIndex + 2}: Empty or blank row`);
           continue;
         }
-        // Get the key value (document ID)
+
+        // Get the key value from the key column
         const keyValue = row[keyColumnIndex];
-        if (!keyValue || keyValue.toString().trim() === '') {
+        
+        // Skip rows with empty key values
+        if (keyValue === undefined || keyValue === null || keyValue.toString().trim() === '') {
           skippedCount++;
-          skippedRows.push(`Row ${rowIndex + 2}: Empty key column value`);
+          skippedRows.push(`Row ${rowIndex + 2}: Empty key value`);
           continue;
         }
-        const cleanKeyValue = keyValue.toString().trim();
-        if (cleanKeyValue.length === 0 || cleanKeyValue === '' || cleanKeyValue === 'null' || cleanKeyValue === 'undefined') {
+
+        // Sanitize the key value for use as a document ID
+        const cleanKeyValue = keyValue.toString().toLowerCase()
+          .replace(/[^a-z0-9]/g, '_')
+          .replace(/_+/g, '_')
+          .replace(/^_|_$/g, '');
+
+        // Skip rows with invalid key values after sanitization
+        if (!cleanKeyValue || cleanKeyValue.length === 0) {
           skippedCount++;
-          skippedRows.push(`Row ${rowIndex + 2}: Invalid key value '${keyValue}'`);
+          skippedRows.push(`Row ${rowIndex + 2}: Invalid key value after sanitization`);
           continue;
         }
-        // Create document data
-        const documentData: any = {
-          syncedAt: Timestamp.now(),
-          syncedFrom: 'google-sheets',
-          sheetTabId: sheetTabId,
-          clientId: clientId,
-          connectionId: connectionId,
+
+        // Create document data from selected columns
+        const documentData: Record<string, string> = {
+          syncedAt: new Date().toISOString(),
         };
-        // Only map selected columns (strict)
-        selectedIndices.forEach((colIdx: number) => {
-          if (colIdx === -1) return;
-          const header = headers[colIdx];
-          // Sanitize field name for Firebase
-          const fieldName = header.toString().toLowerCase()
+
+        selectedIndices.forEach((headerIndex, i) => {
+          const cellValue = row[headerIndex];
+          const headerName = headers[headerIndex];
+          
+          // Sanitize field names for Firestore
+          const fieldName = headerName.toString().toLowerCase()
             .replace(/[^a-z0-9]/g, '_')
             .replace(/_+/g, '_')
             .replace(/^_|_$/g, '');
-          if (fieldName && fieldName.length > 0) {
-            const cellValue = row[colIdx];
+
+          if (fieldName.length > 0) {
             documentData[fieldName] = cellValue !== undefined && cellValue !== null ? cellValue.toString().trim() : '';
           }
         });
@@ -216,7 +196,6 @@ export async function POST(
         console.error(`Error processing row ${rowIndex + 2}:`, error);
       }
     }
-    console.log(`Pre-processing complete. Valid rows: ${validRows.length}, Skipped: ${skippedCount}, Errors: ${errorCount}`);
 
     // Batch write operations (Firebase supports up to 500 operations per batch)
     const BATCH_SIZE = 500;
@@ -276,7 +255,7 @@ export async function POST(
 
       return NextResponse.json({
       success: true,
-      message: `${statusMessage} to nested collection under sheet tab '${sheetTabPathName}'`,
+      message: `${statusMessage} to collection '${sheetTabData.collectionName}'`,
       syncedCount,
       skippedCount,
       errorCount,
@@ -284,7 +263,7 @@ export async function POST(
       skippedRows: skippedRows.slice(0, 5), // Return only first 5 skipped rows in response
       collectionName: sheetTabData.collectionName,
       sheetName: sheetTabData.sheetName,
-        storagePath: `clients/${clientId}/connections/${connectionId}/sheetTabs/${sheetTabPathName}/records`,
+        storagePath: `collections/${sheetTabData.collectionName}/documents`,
     });
 
   } catch (error) {

@@ -26,14 +26,14 @@ import {
 import { SalesAnalyticsChartProps } from '@/types/components';
 
 interface SalesData {
-  Booking_Date: string;
+  RebelX_Date: string;
   Total_Book: number;
 }
 
 // Transform the sales data to match the chart format
 const transformSalesData = (salesData: SalesData[]) => {
   return salesData.map(item => ({
-    date: item.Booking_Date,
+    date: item.RebelX_Date,
     total: item.Total_Book
   }));
 };

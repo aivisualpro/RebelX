@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useAppState } from '@/app/state/AppStateProvider';
-import { companyService, CompanyData } from '@/lib/auth';
+// Removed obsolete auth imports - using Firebase Auth now
 import SalesAnalyticsChart from '@/components/SalesAnalyticsChart';
 import RevenueRings from '@/components/RevenueRings';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
@@ -18,7 +18,7 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { language, setLanguage, t } = useLanguage();
-  const [companyData, setCompanyData] = useState<CompanyData | null>(null);
+  const [companyData, setCompanyData] = useState<any>(null); // Simplified - no longer using CompanyData type
   const [isLoading, setIsLoading] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
@@ -40,7 +40,7 @@ function DashboardContent() {
   const { region, setRegion, allowedRegions, isLoading: stateLoading, refreshFromStorage } = useAppState();
   
   // Extract companyId once to prevent unnecessary re-renders
-  const companyId = searchParams.get('companyId') || readCookie('companyId') || 'booking-plus';
+  const companyId = searchParams.get('companyId') || readCookie('companyId') || 'rebelx';
   
   // Refresh state when component mounts to ensure latest data
   useEffect(() => {
@@ -54,7 +54,7 @@ function DashboardContent() {
         const userEmail = localStorage.getItem('userEmail');
         
         // Set admin status
-        setIsAdmin(userEmail === 'admin@aivisualpro.com');
+        setIsAdmin(userEmail === 'adeel@grassrootsharvest.com');
         
         // Fetch user name only if we have userEmail and companyData
         if (userEmail && companyData) {
@@ -104,16 +104,12 @@ function DashboardContent() {
     if (companyData || isLoading === false) return;
     
     if (companyId) {
-      // Load company data from the URL parameter with faster loading
-      companyService.getCompanyData(companyId)
-        .then(data => {
-          setCompanyData(data);
-          setIsLoading(false);
-        })
-        .catch(error => {
-          console.error('Error loading company data:', error);
-          setIsLoading(false);
-        });
+      // Simplified company data loading - using fixed data for single-client app
+      setCompanyData({
+        companyName: 'Rebel X',
+        description: 'KPI Dashboard Platform'
+      });
+      setIsLoading(false);
     } else {
       // No company ID, redirect to auth
       router.push('/auth');
@@ -148,7 +144,7 @@ function DashboardContent() {
       // Compute date range using utility function for better performance
       const { startDate, endDate } = getDateRangeForFilter(filters.range);
       
-      const params = new URLSearchParams({ clientId: companyId, connectionId: region, sheetTabId: 'booking_x' });
+      const params = new URLSearchParams({ clientId: companyId, connectionId: region, sheetTabId: 'rebelx' });
       if (filters.range !== 'all' && startDate && endDate) { 
         params.set('startDate', startDate); 
         params.set('endDate', endDate); 
@@ -345,7 +341,7 @@ function DashboardContent() {
                 }}
               >
                 {isAdmin && (
-                  <Link href={`/connections?companyId=${searchParams.get('companyId')}`} className="block px-4 py-2 hover:bg-slate-50">Connections</Link>
+                  <Link href={`/databases?companyId=${searchParams.get('companyId')}`} className="block px-4 py-2 hover:bg-slate-50">Databases</Link>
                 )}
                 <Link href={`/reports?companyId=${searchParams.get('companyId')}`} className="block px-4 py-2 hover:bg-slate-50">Reports</Link>
                 
@@ -521,7 +517,7 @@ function DashboardContent() {
                     if (turnoverSeries && turnoverSeries.length > 0) {
                       // Use real data from turnover series, mapping to new interface
                       return turnoverSeries.map(item => ({
-                        Booking_Date: item.date,
+                        RebelX_Date: item.date,
                         Total_Book: item.value
                       }));
                     } else {
@@ -535,7 +531,7 @@ function DashboardContent() {
                         date.setDate(date.getDate() - i);
                         
                         data.push({
-                          Booking_Date: date.toISOString().split('T')[0],
+                          RebelX_Date: date.toISOString().split('T')[0],
                           Total_Book: 0 // Show zero sales when no real data exists
                         });
                       }
@@ -1136,7 +1132,7 @@ function DashboardContent() {
             {/* Booking Status Pie Chart */}
             <div className="bg-gradient-to-br from-slate-50 to-white rounded-2xl shadow-lg border border-slate-200/60 p-6 relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
-              <div className="text-slate-900 font-semibold mb-6">Booking Status</div>
+              <div className="text-slate-900 font-semibold mb-6">RebelX Status</div>
               {(() => {
                 const entries = Object.entries(analytics.distributions.statusCounts);
                 const total = entries.reduce((s, [,v]) => s + (v as number), 0);
@@ -1212,7 +1208,7 @@ function DashboardContent() {
                       <svg width="200" height="200" className="drop-shadow-lg">
                         <defs>
                           {segments.map((segment, i) => (
-                            <linearGradient key={i} id={`bookingGradient${i}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                            <linearGradient key={i} id={`rebelxGradient${i}`} x1="0%" y1="0%" x2="100%" y2="100%">
                               <stop offset="0%" stopColor={segment.color.main} stopOpacity="0.8" />
                               <stop offset="100%" stopColor={segment.color.main} stopOpacity="1" />
                             </linearGradient>
@@ -1222,7 +1218,7 @@ function DashboardContent() {
                           <g key={i}>
                             <path
                               d={segment.pathData}
-                              fill={`url(#bookingGradient${i})`}
+                              fill={`url(#rebelxGradient${i})`}
                               stroke="white"
                               strokeWidth="3"
                               className="hover:opacity-80 transition-opacity duration-300"
