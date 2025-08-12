@@ -12,7 +12,8 @@ import {
 import { db } from './firebase';
 import { 
   ClientSheetTab,
-  GoogleSheetTab
+  GoogleSheetTab,
+  CreateSheetTabDTO
 } from '@/types';
 
 // Define missing types locally until they are added to the main types file
@@ -415,15 +416,7 @@ export const sheetTabService = {
   },
 
   // Create a single sheet tab
-  async createSheetTab(data: {
-    clientId: string;
-    connectionId: string;
-    tabName: string;
-    collectionName: string;
-    keyColumn: string;
-    selectedColumns?: string[];
-    createdBy: string;
-  }): Promise<ClientSheetTab> {
+  async createSheetTab(data: CreateSheetTabDTO): Promise<ClientSheetTab> {
     try {
       const response = await fetch('/api/sheet-tabs', {
         method: 'POST',
@@ -437,7 +430,9 @@ export const sheetTabService = {
             sheetName: data.tabName,
             collectionName: data.collectionName,
             keyColumn: data.keyColumn,
+            labelColumn: data.labelColumn,
             selectedColumns: data.selectedColumns,
+            columnDefinitions: data.columnDefinitions,
           }],
           createdBy: data.createdBy,
         }),
@@ -457,6 +452,7 @@ export const sheetTabService = {
         sheetName: data.tabName,
         collectionName: data.collectionName,
         keyColumn: data.keyColumn,
+        labelColumn: data.labelColumn,
         selectedColumns: data.selectedColumns,
         isActive: true,
         createdAt: { toDate: () => new Date() } as Timestamp,
@@ -469,14 +465,11 @@ export const sheetTabService = {
   },
 
   // Get sheet tabs for a client
-  async getSheetTabs(companyId: string, clientId?: string): Promise<ClientSheetTab[]> {
+  async getSheetTabs(companyId?: string, clientId?: string): Promise<ClientSheetTab[]> {
     try {
-      const params = new URLSearchParams({ companyId });
-      if (clientId) {
-        params.append('clientId', clientId);
-      }
-      
-      const response = await fetch(`/api/sheet-tabs?${params.toString()}`);
+      // Since the API doesn't actually filter by these parameters and we're operating at root level,
+      // we can call without parameters to avoid unnecessary query strings
+      const response = await fetch('/api/sheet-tabs');
       
       if (!response.ok) {
         throw new Error('Failed to fetch sheet tabs');
@@ -494,10 +487,11 @@ export const sheetTabService = {
     }
   },
 
-  // Update an existing sheet tab (selectedColumns, keyColumn)
+  // Update an existing sheet tab (selectedColumns, keyColumn, labelColumn)
   async updateSheetTab(tabId: string, clientId: string, connectionId: string, data: {
     selectedColumns?: string[];
     keyColumn?: string;
+    labelColumn?: string;
   }): Promise<void> {
     try {
       const response = await fetch(`/api/sheet-tabs/${tabId}`, {

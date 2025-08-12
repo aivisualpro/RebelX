@@ -14,15 +14,11 @@ import {
   BarChart3,
   PieChart,
   Settings,
-  User,
-  Home,
   FileText,
   Lightbulb,
-  Bell,
   Search,
   ChevronRight,
-  Zap,
-  Crown
+  Zap
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -81,63 +77,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
-      {/* Navigation Bar */}
-      <nav className="bg-black/50 backdrop-blur-lg border-b border-gray-800/50 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            {/* Logo */}
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-lg flex items-center justify-center">
-                <Crown className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-                  REBEL X
-                </h1>
-              </div>
-            </div>
-
-            {/* Navigation Links */}
-            <div className="hidden md:flex items-center space-x-8">
-              <Link href="/home" className="flex items-center space-x-2 text-blue-400 hover:text-blue-300 transition-colors">
-                <Home className="w-4 h-4" />
-                <span>Home</span>
-              </Link>
-              <Link href="/kpis" className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors">
-                <BarChart3 className="w-4 h-4" />
-                <span>KPIs</span>
-              </Link>
-              <Link href="/reports" className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors">
-                <FileText className="w-4 h-4" />
-                <span>Reports</span>
-              </Link>
-              <Link href="/insights" className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors">
-                <Lightbulb className="w-4 h-4" />
-                <span>Insights</span>
-              </Link>
-              <Link href="/databases" className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors">
-                <Settings className="w-4 h-4" />
-                <span>Databases</span>
-              </Link>
-            </div>
-
-            {/* User Profile */}
-            <div className="flex items-center space-x-4">
-              <button className="relative p-2 text-gray-400 hover:text-white transition-colors">
-                <Bell className="w-5 h-5" />
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
-              </button>
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                  <User className="w-4 h-4 text-white" />
-                </div>
-                <span className="text-sm text-gray-300 hidden sm:block">{userEmail.split('@')[0]}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </nav>
-
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Hero Section */}

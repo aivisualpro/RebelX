@@ -62,16 +62,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     let orderField = sortBy || keyField;
     let qBase = query(colRef, orderBy(orderField, sortOrder), fbLimit(limitNum));
 
-    // If searching, do prefix search on key field
+    // If searching, we need to fetch more records and filter client-side
+    // since Firestore doesn't support full-text search across multiple fields
+    let searchLimit = limitNum;
     if (search) {
-      orderField = keyField;
-      qBase = query(
-        colRef,
-        orderBy(keyField, 'asc'),
-        startAt(search),
-        endAt(search + '\uf8ff'),
-        fbLimit(limitNum)
-      );
+      // Increase limit when searching to account for client-side filtering
+      searchLimit = Math.min(1000, limitNum * 10);
+      qBase = query(colRef, orderBy(orderField, sortOrder), fbLimit(searchLimit));
     }
 
     // Pagination via cursor (compute cursor by reading previous page window)
@@ -85,9 +82,29 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     }
 
     const snap = await getDocs(qBase);
-    const records = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    let records = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-    return NextResponse.json({ total, records });
+    // Client-side filtering for search across all fields
+    if (search) {
+      const searchLower = search.toLowerCase();
+      records = records.filter((record) => {
+        // Search across all string fields in the record
+        return Object.values(record).some((value: any) => {
+          if (typeof value === 'string') {
+            return value.toLowerCase().includes(searchLower);
+          }
+          if (typeof value === 'number') {
+            return value.toString().includes(searchLower);
+          }
+          return false;
+        });
+      });
+
+      // Limit results after filtering
+      records = records.slice(0, limitNum);
+    }
+
+    return NextResponse.json({ total: search ? records.length : total, records });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Failed to fetch records' }, { status: 500 });
   }

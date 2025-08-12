@@ -9,13 +9,26 @@ import { ReactNode } from 'react';
 // CORE DATABASE TYPES (Google Sheets + Firebase Integration)
 // ============================================================================
 
+export type ColumnType = 'text' | 'number' | 'price' | 'enum' | 'enumlist' | 'reference';
+export type EnumSourceType = 'auto' | 'manual' | 'ref';
+
+export interface ColumnDefinition {
+  index: number;
+  name: string;
+  type?: ColumnType;
+  // For enum/enumlist types
+  enumSource?: EnumSourceType; // 'auto' = unique values from collection, 'manual' = user-defined, 'ref' = reference another collection
+  options?: string[]; // For manual enum/enumlist types
+  // For reference type OR enum/enumlist with 'ref' source
+  referenceCollection?: string;
+  referenceKeyColumn?: string;
+  referenceLabelColumn?: string;
+}
+
 export interface GoogleSheetTab {
   sheetId: number;
   sheetTitle: string;
-  columns: {
-    index: number;
-    name: string;
-  }[];
+  columns: ColumnDefinition[];
   hasData: boolean;
 }
 
@@ -24,7 +37,11 @@ export interface DatabaseEntry {
   tabName: string;
   collectionName: string;
   keyColumn: string;
+  /** Optional human label for rows (stored on sheetTabs doc) */
+  labelColumn?: string;            // <-- NEW
   selectedColumns: string[];
+  /** Column metadata with types and options */
+  columnDefinitions?: Record<string, ColumnDefinition>;
   createdAt: Date;
   lastSyncAt?: Date;
   syncStatus?: 'pending' | 'completed' | 'completed_with_errors' | 'failed';
@@ -39,7 +56,11 @@ export interface ClientSheetTab {
   sheetName: string;
   collectionName: string;
   keyColumn: string;
+  /** Optional human label for rows (e.g., Client Name) */
+  labelColumn?: string | null;     // <-- NEW
   selectedColumns?: string[];
+  /** Column metadata with types and options */
+  columnDefinitions?: Record<string, ColumnDefinition>;
   isActive: boolean;
   createdAt: any; // Firebase Timestamp
   lastSyncAt?: any; // Firebase Timestamp
@@ -48,6 +69,31 @@ export interface ClientSheetTab {
   syncStatus?: 'pending' | 'completed' | 'completed_with_errors' | 'failed';
   lastSyncErrors?: string[];
 }
+
+/**
+ * Payload for creating a sheet tab metadata document.
+ * Allow labelColumn at creation time.
+ */
+export interface CreateSheetTabDTO {
+  clientId: string;
+  connectionId: string;
+  tabName: string;           // human sheet/tab title
+  collectionName: string;    // firestore collection
+  keyColumn: string;         // required key
+  labelColumn?: string;      // <-- NEW (optional label)
+  selectedColumns: string[];
+  columnDefinitions?: Record<string, ColumnDefinition>; // Column metadata
+  createdBy: string;
+}
+
+/**
+ * Payload for updating a sheet tab metadata document.
+ * NOTE: labelColumn is included so you can change it anytime.
+ */
+export type UpdateSheetTabDTO = Partial<Pick<
+  CreateSheetTabDTO,
+  'selectedColumns' | 'labelColumn' | 'columnDefinitions'
+>>;
 
 // ============================================================================
 // ANALYTICS & KPI TYPES

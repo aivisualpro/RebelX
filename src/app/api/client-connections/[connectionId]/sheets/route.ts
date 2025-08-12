@@ -10,6 +10,8 @@ export async function GET(
 ) {
   try {
     const { connectionId } = await params;
+    const { searchParams } = new URL(request.url);
+    const sheetParam = searchParams.get('sheet'); // optional: request headers for one sheet
 
     console.log('Fetching sheets for connection:', connectionId);
 
@@ -108,6 +110,46 @@ export async function GET(
 
       const sheets = google.sheets({ version: 'v4', auth });
 
+      // If a specific sheet is requested, fetch its headers and return immediately
+      if (sheetParam) {
+        // First determine the sheetId and normalized title (in case)
+        const meta = await sheets.spreadsheets.get({ spreadsheetId: connection.spreadsheetId });
+        const target = (meta.data.sheets || [])
+          .map(s => ({
+            sheetId: s.properties?.sheetId || 0,
+            sheetTitle: s.properties?.title || 'Unknown',
+          }))
+          .find(s => s.sheetTitle === sheetParam);
+
+        if (!target) {
+          return NextResponse.json({ success: false, error: `Sheet '${sheetParam}' not found` }, { status: 404 });
+        }
+
+        try {
+          const range = `'${target.sheetTitle}'!1:3`;
+          const valuesResponse = await sheets.spreadsheets.values.get({
+            spreadsheetId: connection.spreadsheetId,
+            range,
+            quotaUser: `sheets_headers_${connectionId}_${encodeURIComponent(target.sheetTitle)}`,
+            valueRenderOption: 'UNFORMATTED_VALUE',
+            dateTimeRenderOption: 'FORMATTED_STRING',
+          });
+          const rows = valuesResponse.data.values || [];
+          const headers = rows[0] || [];
+          const result = {
+            sheetId: target.sheetId,
+            sheetTitle: target.sheetTitle,
+            columns: headers.map((h: any, i: number) => ({ index: i, name: String(h || `Column ${i + 1}`) })),
+            hasData: rows.length > 1,
+            dataRowCount: rows.length,
+          };
+          return NextResponse.json({ success: true, sheets: [result], single: true });
+        } catch (e) {
+          console.error('Error fetching headers for sheet', sheetParam, e);
+          return NextResponse.json({ success: false, error: 'Failed to fetch headers' }, { status: 500 });
+        }
+      }
+
       // Get spreadsheet metadata including all sheets
       const response = await sheets.spreadsheets.get({
         spreadsheetId: connection.spreadsheetId,
@@ -119,45 +161,78 @@ export async function GET(
         sheetTitle: sheet.properties?.title || 'Unknown',
       })) || [];
 
-      // For each tab, get the first few rows to determine column headers
-      const tabsWithColumns = await Promise.all(
-        tabs.map(async (tab) => {
-          try {
-            const range = `'${tab.sheetTitle}'!1:3`; // Get first 3 rows
-            const valuesResponse = await sheets.spreadsheets.values.get({
-              spreadsheetId: connection.spreadsheetId,
-              range,
-            });
+      // Optimize: Only fetch column info for a limited number of sheets to avoid quota issues
+      // Prioritize sheets that are likely to be used (first 10 sheets)
+      const priorityTabs = tabs.slice(0, 10);
+      const remainingTabs = tabs.slice(10);
 
-            const rows = valuesResponse.data.values || [];
-            const headers = rows[0] || [];
-            
-            return {
-              ...tab,
-              columns: headers.map((header, index) => ({
-                index,
-                name: header?.toString() || `Column ${index + 1}`,
-              })),
-              hasData: rows.length > 1,
-              dataRowCount: rows.length, // Include actual row count
-            };
-          } catch (error) {
-            console.error(`Error fetching columns for sheet ${tab.sheetTitle}:`, error);
-            return {
-              ...tab,
-              columns: [],
-              hasData: false,
-            };
+      // Batch fetch column info for priority sheets with retry and delay
+      const tabsWithColumns = [];
+      
+      for (let i = 0; i < priorityTabs.length; i++) {
+        const tab = priorityTabs[i];
+        try {
+          // Add small delay between requests to avoid hitting rate limits
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
-        })
-      );
+          
+          const range = `'${tab.sheetTitle}'!1:3`; // Get first 3 rows
+          const valuesResponse = await sheets.spreadsheets.values.get({
+            spreadsheetId: connection.spreadsheetId,
+            range,
+            // Add quota management
+            quotaUser: `sheets_list_${connectionId}`,
+          });
 
-      console.log('Found sheets:', tabsWithColumns.length);
+          const rows = valuesResponse.data.values || [];
+          const headers = rows[0] || [];
+          
+          tabsWithColumns.push({
+            ...tab,
+            columns: headers.map((header, index) => ({
+              index,
+              name: header?.toString() || `Column ${index + 1}`,
+            })),
+            hasData: rows.length > 1,
+            dataRowCount: rows.length,
+          });
+        } catch (error: any) {
+          console.warn(`Skipping column fetch for sheet ${tab.sheetTitle} due to quota:`, error?.message || error);
+          tabsWithColumns.push({
+            ...tab,
+            columns: [],
+            hasData: false,
+            quotaLimited: true,
+          });
+          
+          // If we hit quota errors, stop fetching more to avoid further issues
+          if (error?.code === 429 || error?.status === 429) {
+            console.warn('Quota limit reached, skipping remaining sheet column fetches');
+            break;
+          }
+        }
+      }
+      
+      // Add remaining tabs without column info to avoid quota issues
+      remainingTabs.forEach(tab => {
+        tabsWithColumns.push({
+          ...tab,
+          columns: [],
+          hasData: false,
+          quotaLimited: true,
+        });
+      });
+
+      console.log(`Found sheets: ${tabsWithColumns.length} (${priorityTabs.length} with column info, ${remainingTabs.length} basic info only)`);
 
       return NextResponse.json({
         success: true,
         spreadsheetName,
         sheets: tabsWithColumns,
+        quotaOptimized: true,
+        totalSheets: tabs.length,
+        sheetsWithColumns: priorityTabs.length,
       });
     } catch (error) {
       console.error('Error accessing Google Sheets:', error);

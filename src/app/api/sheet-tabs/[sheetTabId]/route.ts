@@ -1,147 +1,166 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { doc, getDoc, updateDoc, deleteDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  getDocs,
+  writeBatch,
+} from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-// Update sheet tab configuration (e.g., selected columns, key column)
+/**
+ * PATCH /api/sheet-tabs/[sheetTabId]
+ * Allows updating:
+ *  - selectedHeaders  (preferred going forward)
+ *  - selectedColumns  (kept in sync for backward compatibility)
+ *  - keyColumn
+ *  - labelColumn      (optional, for display in foreign-key dropdowns)
+ *
+ * Also guarantees the keyColumn is included in selectedHeaders.
+ */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ sheetTabId: string }> }
 ) {
   try {
     const { sheetTabId } = await params;
-    const body = await request.json();
-    // For direct sheet tab management, we'll use default IDs
-    const { selectedColumns, keyColumn } = body as {
-      selectedColumns?: string[];
-      keyColumn?: string;
-    };
-    const clientId = body.clientId || 'default';
-    const connectionId = body.connectionId || 'default';
-
     if (!sheetTabId) {
-      return NextResponse.json(
-        { error: 'sheetTabId is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'sheetTabId is required' }, { status: 400 });
     }
 
-    // Reference sheet tab as top-level collection
+    const body = await request.json().catch(() => ({}));
+    const {
+      selectedHeaders,
+      selectedColumns,
+      keyColumn,
+      labelColumn,
+      columnDefinitions,
+    }: {
+      selectedHeaders?: string[];
+      selectedColumns?: string[];
+      keyColumn?: string;
+      labelColumn?: string;
+      columnDefinitions?: Record<string, any>;
+    } = body || {};
+
     const tabRef = doc(db, 'sheetTabs', sheetTabId);
-    const tabSnap = await getDoc(tabRef);
-    if (!tabSnap.exists()) {
+    const snap = await getDoc(tabRef);
+    if (!snap.exists()) {
       return NextResponse.json({ error: 'Sheet tab not found' }, { status: 404 });
     }
 
+    const current = snap.data() as any;
     const updates: Record<string, any> = {};
-    if (Array.isArray(selectedColumns)) {
-      const clean = selectedColumns
-        .filter((c) => typeof c === 'string' && c.trim().length > 0)
-        .map((c) => c.toString());
-      const finalSet = new Set(clean);
-      const currentKey = (keyColumn || (tabSnap.data() as any).keyColumn) as string;
-      if (currentKey && !finalSet.has(currentKey)) finalSet.add(currentKey);
-      updates.selectedColumns = Array.from(finalSet);
-      // headerOrder/selectedHeaders will be regenerated on next sync
-      updates.headerOrder = null;
-      updates.selectedHeaders = null;
+
+    // Normalize headers: prefer selectedHeaders from body, else fall back to selectedColumns.
+    let headers: string[] | undefined;
+
+    if (Array.isArray(selectedHeaders)) {
+      headers = selectedHeaders;
+    } else if (Array.isArray(selectedColumns)) {
+      headers = selectedColumns;
     }
-    if (typeof keyColumn === 'string' && keyColumn.trim().length > 0) {
-      updates.keyColumn = keyColumn;
+
+    if (headers) {
+      const clean = headers
+        .map((h) => (typeof h === 'string' ? h.trim() : ''))
+        .filter(Boolean);
+
+      const finalKey =
+        typeof keyColumn === 'string' && keyColumn.trim()
+          ? keyColumn.trim()
+          : (current.keyColumn as string | undefined);
+
+      // Ensure keyColumn is part of the selected headers
+      if (finalKey && !clean.includes(finalKey)) clean.push(finalKey);
+
+      // Write both fields to keep old code working
+      updates.selectedHeaders = clean;
+      updates.selectedColumns = clean;
+
+      // Optional: keep a consistent order field used by some UIs
+      updates.headerOrder = clean;
+    }
+
+    if (typeof keyColumn === 'string' && keyColumn.trim()) {
+      updates.keyColumn = keyColumn.trim();
+    }
+
+    if (typeof labelColumn === 'string') {
+      // allow empty string to clear it if needed
+      updates.labelColumn = labelColumn;
+    }
+
+    if (columnDefinitions && typeof columnDefinitions === 'object') {
+      updates.columnDefinitions = columnDefinitions;
     }
 
     await updateDoc(tabRef, updates);
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error updating sheet tab:', error);
+    return NextResponse.json({ success: true, updates });
+  } catch (err) {
+    console.error('Error updating sheet tab:', err);
     return NextResponse.json({ error: 'Failed to update sheet tab' }, { status: 500 });
   }
 }
 
-// Delete a sheet tab configuration and all related records
+/**
+ * DELETE /api/sheet-tabs/[sheetTabId]
+ * Deletes the sheetTab doc and all docs from its target collection.
+ */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { sheetTabId: string } }
 ) {
   try {
-    const { searchParams } = new URL(request.url);
     const { sheetTabId } = params;
-    // For direct sheet tab management, we'll use default IDs
-    const clientId = searchParams.get('clientId') || 'default';
-    const connectionId = searchParams.get('connectionId') || 'default';
-
     if (!sheetTabId) {
-      return NextResponse.json(
-        { error: 'sheetTabId is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'sheetTabId is required' }, { status: 400 });
     }
 
-    console.log('Starting delete process for sheet tab:', sheetTabId);
-
-    // Step 1: Get the sheet tab configuration to find the collection name
+    // 1) Read the tab to discover its collection
     const tabRef = doc(db, 'sheetTabs', sheetTabId);
-    const tabSnap = await getDoc(tabRef);
-    
-    if (!tabSnap.exists()) {
+    const snap = await getDoc(tabRef);
+    if (!snap.exists()) {
       return NextResponse.json({ error: 'Sheet tab not found' }, { status: 404 });
     }
 
-    const tabData = tabSnap.data();
-    const collectionName = tabData.collectionName;
-    
-    console.log('Found sheet tab with collection:', collectionName);
+    const { collectionName } = snap.data() as any;
 
-    // Step 2: Delete all records in the associated Firebase collection
+    // 2) Delete all docs in that collection (batched)
     let deletedRecordsCount = 0;
     if (collectionName) {
-      const collectionRef = collection(db, collectionName);
-      const snapshot = await getDocs(collectionRef);
-      
-      console.log(`Found ${snapshot.docs.length} records to delete in collection: ${collectionName}`);
-      deletedRecordsCount = snapshot.docs.length;
+      const colRef = collection(db, collectionName);
+      const all = await getDocs(colRef);
 
-      if (snapshot.docs.length > 0) {
-        // Delete records in batches (Firebase supports up to 500 operations per batch)
-        const BATCH_SIZE = 500;
-        const batches = Math.ceil(snapshot.docs.length / BATCH_SIZE);
-        
-        for (let batchIndex = 0; batchIndex < batches; batchIndex++) {
-          const batch = writeBatch(db);
-          const startIndex = batchIndex * BATCH_SIZE;
-          const endIndex = Math.min(startIndex + BATCH_SIZE, snapshot.docs.length);
-          
-          console.log(`Deleting batch ${batchIndex + 1}/${batches} (records ${startIndex + 1}-${endIndex})...`);
-          
-          for (let i = startIndex; i < endIndex; i++) {
-            batch.delete(snapshot.docs[i].ref);
-          }
-          
-          await batch.commit();
-          console.log(`Batch ${batchIndex + 1} completed: ${endIndex - startIndex} records deleted`);
-        }
-        
-        console.log(`Successfully deleted all ${snapshot.docs.length} records from collection: ${collectionName}`);
+      deletedRecordsCount = all.docs.length;
+      const BATCH_SIZE = 500;
+      const batches = Math.ceil(all.docs.length / BATCH_SIZE);
+
+      for (let i = 0; i < batches; i++) {
+        const batch = writeBatch(db);
+        const start = i * BATCH_SIZE;
+        const end = Math.min(start + BATCH_SIZE, all.docs.length);
+        for (let j = start; j < end; j++) batch.delete(all.docs[j].ref);
+        await batch.commit();
       }
     }
 
-    // Step 3: Delete the sheet tab configuration
+    // 3) Delete the sheetTab doc
     await deleteDoc(tabRef);
-    console.log('Sheet tab configuration deleted');
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      message: `Database deleted successfully. Removed ${deletedRecordsCount} records from collection '${collectionName}'.`,
       deletedRecords: deletedRecordsCount,
-      collectionName
+      collectionName,
     });
-  } catch (error) {
-    console.error('Error deleting sheet tab:', error);
-    return NextResponse.json({ 
-      error: 'Failed to delete sheet tab', 
-      details: error instanceof Error ? error.message : 'Unknown error' 
-    }, { status: 500 });
+  } catch (err) {
+    console.error('Error deleting sheet tab:', err);
+    return NextResponse.json(
+      { error: 'Failed to delete sheet tab' },
+      { status: 500 }
+    );
   }
 }
-
-
