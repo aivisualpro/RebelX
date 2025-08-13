@@ -2,13 +2,12 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-type Language = 'English' | 'Arabic' | 'Egyptian';
+type Language = 'English' | 'Arabic';
 
 interface Translations {
   [key: string]: {
     English: string;
     Arabic: string;
-    Egyptian: string;
   };
 }
 
@@ -16,110 +15,89 @@ const translations: Translations = {
   // Dashboard
   'dashboard.title': {
     English: 'Dashboard',
-    Arabic: 'لوحة التحكم',
-    Egyptian: 'الداشبورد'
+    Arabic: 'لوحة التحكم'
   },
   'dashboard.totalSales': {
     English: 'Total Sales',
-    Arabic: 'إجمالي المبيعات',
-    Egyptian: 'مجموع المبيعات'
+    Arabic: 'إجمالي المبيعات'
   },
   'dashboard.uniqueClients': {
     English: 'Unique Clients',
-    Arabic: 'العملاء الفريدون',
-    Egyptian: 'العملاء المميزين'
+    Arabic: 'العملاء الفريدون'
   },
   'dashboard.totalLocations': {
     English: 'Total Locations',
-    Arabic: 'إجمالي المواقع',
-    Egyptian: 'مجموع الفروع'
+    Arabic: 'إجمالي المواقع'
   },
   'dashboard.channels': {
     English: 'Channels',
-    Arabic: 'القنوات',
-    Egyptian: 'القنوات'
+    Arabic: 'القنوات'
   },
   'dashboard.rebelxTypes': {
     English: 'RebelX Types',
-    Arabic: 'أنواع RebelX',
-    Egyptian: 'أنواع RebelX'
+    Arabic: 'أنواع RebelX'
   },
   'dashboard.totalPaid': {
     English: 'Total Paid',
-    Arabic: 'إجمالي المدفوع',
-    Egyptian: 'مجموع المدفوع'
+    Arabic: 'إجمالي المدفوع'
   },
   'dashboard.totalDiscounts': {
     English: 'Total Discounts',
-    Arabic: 'إجمالي الخصومات',
-    Egyptian: 'مجموع التخفيضات'
+    Arabic: 'إجمالي الخصومات'
   },
   'dashboard.outstandingDue': {
     English: 'Outstanding Due',
-    Arabic: 'المبالغ المستحقة',
-    Egyptian: 'الفلوس المستحقة'
+    Arabic: 'المبالغ المستحقة'
   },
   'dashboard.artists': {
     English: 'Artists',
-    Arabic: 'الفنانون',
-    Egyptian: 'الفنانين'
+    Arabic: 'الفنانون'
   },
   'dashboard.avgManagerRating': {
     English: 'Avg. Manager Rating',
-    Arabic: 'متوسط تقييم المدير',
-    Egyptian: 'متوسط تقييم المدير'
+    Arabic: 'متوسط تقييم المدير'
   },
   'chart.salesTrends': {
     English: 'Sales Trends By Location',
-    Arabic: 'اتجاهات المبيعات حسب الموقع',
-    Egyptian: 'ترند المبيعات حسب الفرع'
+    Arabic: 'اتجاهات المبيعات حسب الموقع'
   },
   'chart.6months': {
     English: '6 Months',
-    Arabic: '6 أشهر',
-    Egyptian: '6 شهور'
+    Arabic: '6 أشهر'
   },
   'chart.3months': {
     English: '3 Months',
-    Arabic: '3 أشهر',
-    Egyptian: '3 شهور'
+    Arabic: '3 أشهر'
   },
   'chart.30days': {
     English: '30 Days',
-    Arabic: '30 يوم',
-    Egyptian: '30 يوم'
+    Arabic: '30 يوم'
   },
   'chart.7days': {
     English: '7 Days',
-    Arabic: '7 أيام',
-    Egyptian: '7 أيام'
+    Arabic: '7 أيام'
   },
   'chart.24hours': {
     English: '24 Hours',
-    Arabic: '24 ساعة',
-    Egyptian: '24 ساعة'
+    Arabic: '24 ساعة'
   },
   // Menu items
   'menu.connections': {
     English: 'Connections',
-    Arabic: 'الاتصالات',
-    Egyptian: 'الكونكشن'
+    Arabic: 'الاتصالات'
   },
 
   'menu.account': {
     English: 'Account',
-    Arabic: 'الحساب',
-    Egyptian: 'الأكونت'
+    Arabic: 'الحساب'
   },
   'menu.logout': {
     English: 'Logout',
-    Arabic: 'تسجيل الخروج',
-    Egyptian: 'خروج'
+    Arabic: 'تسجيل الخروج'
   },
   'menu.language': {
     English: 'Language',
-    Arabic: 'اللغة',
-    Egyptian: 'اللغة'
+    Arabic: 'اللغة'
   }
 };
 
@@ -137,7 +115,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const savedLanguage = localStorage.getItem('selectedLanguage') as Language;
-    if (savedLanguage && ['English', 'Arabic', 'Egyptian'].includes(savedLanguage)) {
+    if (savedLanguage && ['English', 'Arabic'].includes(savedLanguage)) {
       setLanguageState(savedLanguage);
     }
   }, []);
@@ -151,7 +129,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     return translations[key]?.[language] || key;
   };
 
-  const isRTL = language === 'Arabic' || language === 'Egyptian';
+  const isRTL = language === 'Arabic';
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t, isRTL }}>

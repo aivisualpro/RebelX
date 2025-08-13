@@ -65,7 +65,7 @@ export default function AuthPage() {
           // Store in cookie
           document.cookie = `companyId=${companyId}; path=/; max-age=${60*60*24*7}`;
           // Set fixed allowedRegions for Firebase Auth
-          const allowedRegions = ['saudi1', 'egypt1'];
+         const allowedRegions: string[] = [];
           localStorage.setItem('allowedRegions', JSON.stringify(allowedRegions));
           // IMPORTANT: Always use first allowed region as initial
           localStorage.setItem('region', allowedRegions[0]);

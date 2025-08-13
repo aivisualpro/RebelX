@@ -64,30 +64,9 @@ function normalizeDate(input: any): string | null {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const clientId = searchParams.get('clientId');
-    const connectionId = searchParams.get('connectionId') || 'saudi1';
-    const sheetTabId = searchParams.get('sheetTabId') || 'rebelx';
-    const limitParam = parseInt(searchParams.get('limit') || '10000'); // Reduced default limit for better performance
-    const startDate = searchParams.get('startDate'); // YYYY-MM-DD
-    const endDate = searchParams.get('endDate'); // YYYY-MM-DD
-    const bookedByFilter = searchParams.get('bookedBy');
-    const receptionistFilter = searchParams.get('receptionist');
-    const branchManagerFilter = searchParams.get('branchManager');
-    const artistFilter = searchParams.get('artist');
-    const bookPlusFilter = searchParams.get('bookPlus'); // 'yes' | 'no'
-    const locationFilter = searchParams.get('location');
-
-    if (!clientId) {
-      return NextResponse.json({ error: 'clientId is required' }, { status: 400 });
-    }
-
-    // Load sheet tab meta to know selected headers/order
-    const tabRef = doc(db, 'clients', clientId, 'connections', connectionId, 'sheetTabs', sheetTabId);
-    const tabSnap = await getDoc(tabRef);
-    if (!tabSnap.exists()) {
-      return NextResponse.json({ error: 'Sheet tab not found' }, { status: 404 });
-    }
-    const tabData = tabSnap.data() as any;
+    // This endpoint is deprecated for multi-client structures. Use /databases APIs instead.
+    return NextResponse.json({ error: 'Deprecated: analytics by clients/connections/sheetTabs has been removed. Use /databases endpoints.' }, { status: 410 });
+    
 
     // Check cache first
     const cacheKey = getCacheKey(searchParams);

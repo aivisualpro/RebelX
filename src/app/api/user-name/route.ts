@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const email = searchParams.get('email');
-    const region = searchParams.get('region') || 'saudi1';
+    const region = searchParams.get('region') || '';
 
     if (!email) {
       return NextResponse.json({ error: 'Email parameter is required' }, { status: 400 });

@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId') || 'rebelx';
-    const connectionId = searchParams.get('connectionId') || 'saudi1';
+    const connectionId = searchParams.get('connectionId') || '';
 
     if (!clientId) {
       return NextResponse.json({ error: 'clientId is required' }, { status: 400 });
