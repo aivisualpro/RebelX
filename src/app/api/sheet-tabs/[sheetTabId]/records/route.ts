@@ -77,14 +77,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { collectionName, keyField } = await getCollectionInfo(sheetTabId);
     const colRef = collection(db, collectionName);
 
-    // Count total
-    const totalSnap = await getCountFromServer(query(colRef));
-    const total = totalSnap.data().count || 0;
-
-    // Build base query
-    let orderField = sortBy || keyField;
-    let qBase = query(colRef, orderBy(orderField, sortOrder), fbLimit(limitNum));
-
     // Parse filters (format: filter=Column:Value) for server-side narrowing
     const filterParams = url.searchParams.getAll('filter');
     const parsedFilters: Array<{ field: string; value: string }> = [];
@@ -101,20 +93,38 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // If searching, try FAST path using searchTokens index. Fallback to scan if not present.
     if (search) {
       const searchLower = search.toLowerCase();
-      const firstTerm = searchLower.split(/\s+/g).filter(Boolean)[0] || searchLower;
+      const terms = searchLower.split(/\s+/g).filter(Boolean);
+      const recordContainsAllTerms = (record: Record<string, any>) => {
+        let buf = '';
+        for (const v of Object.values(record)) {
+          if (typeof v === 'string') buf += ' ' + v.toLowerCase();
+          else if (typeof v === 'number') buf += ' ' + String(v);
+        }
+        return terms.every((t) => buf.includes(t));
+      };
 
       try {
-        // Fast path: use array-contains-any on searchTokens with first term and its prefixes (2..10)
-        const prefixes: string[] = [];
-        for (let i = 2; i <= Math.min(10, firstTerm.length); i++) {
-          prefixes.push(firstTerm.slice(0, i));
+        // Fast path: use array-contains-any on searchTokens with tokens from ALL terms
+        // Strategy: for each term push [term, first 2 prefixes], total capped at 10
+        const tokensSet = new Set<string>();
+        for (const term of terms) {
+          if (tokensSet.size >= 10) break;
+          tokensSet.add(term);
+          for (let i = 2; i <= Math.min(3, term.length); i++) {
+            if (tokensSet.size >= 10) break;
+            tokensSet.add(term.slice(0, i));
+          }
         }
+        const tokensBatch = Array.from(tokensSet);
         const candidates: any[] = [];
         // Firestore supports up to 10 values in array-contains-any
-        const tokensBatch = prefixes.slice(0, 10);
         if (tokensBatch.length) {
           // Note: requires an index on searchTokens (array)
-          const qFast = query(colRef, where('searchTokens', 'array-contains-any', tokensBatch), fbLimit(limitNum * 10));
+          const qFast = query(
+            colRef,
+            where('searchTokens', 'array-contains-any', tokensBatch),
+            fbLimit(Math.min(500, limitNum * 10))
+          );
           const fastSnap = await getDocs(qFast);
           fastSnap.forEach((d) => candidates.push({ id: d.id, ...d.data() }));
 
@@ -132,11 +142,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 return false;
               });
               if (!passesFilters) return false;
-              return Object.values(record).some((v: any) => {
-                if (typeof v === 'string') return v.toLowerCase().includes(searchLower);
-                if (typeof v === 'number') return String(v).includes(searchLower);
-                return false;
-              });
+              return recordContainsAllTerms(record);
             });
 
             const total = records.length;
@@ -152,14 +158,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       // Fallback: scan the collection in batches server-side
       const matches: any[] = [];
-      const pageSize = 1000;
-      const maxScans = 100000; // safety cap on scanned docs
+      const pageSize = 500; // smaller batch to reduce latency per request
+      const maxScans = 5000; // tighter cap to avoid long tail latency when index is missing
+      const scanDeadlineMs = 3000; // stop scanning after ~3s to keep response snappy
+      const startedAt = Date.now();
       let scanned = 0;
       let cursor: any = null;
 
       while (true) {
-        let qScan = query(colRef, orderBy(orderField, sortOrder), fbLimit(pageSize));
-        if (cursor) qScan = query(colRef, orderBy(orderField, sortOrder), startAfter(cursor), fbLimit(pageSize));
+        let qScan = query(colRef, orderBy(keyField), fbLimit(pageSize));
+        if (cursor) qScan = query(colRef, orderBy(keyField), startAfter(cursor), fbLimit(pageSize));
         const batch = await getDocs(qScan);
         if (batch.empty) break;
 
@@ -177,35 +185,40 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           });
           if (!passesFilters) continue;
 
-          // Full record contains search
-          const has = Object.values(record).some((v: any) => {
-            if (typeof v === 'string') return v.toLowerCase().includes(searchLower);
-            if (typeof v === 'number') return String(v).includes(searchLower);
-            return false;
-          });
+          // Full record contains all terms
+          const has = recordContainsAllTerms(record);
           if (has) matches.push(record);
         }
 
         cursor = batch.docs[batch.docs.length - 1];
         if (!cursor) break;
         if (scanned >= maxScans) break;
+        if (Date.now() - startedAt > scanDeadlineMs) break;
         // Optional: early stop if we already have enough for several pages
-        if (matches.length >= limitNum * 10) {
-          // Keep scanning a bit more if batch not empty to avoid bias, else break
-          continue;
+        if (matches.length >= limitNum * 5) {
+          // We have enough results for several pages; stop scanning to reduce latency
+          break;
         }
       }
 
       // Paginate matches server-side
-      const total = matches.length;
+      const total = matches.length; // may be partial if deadline hit
       const start = (page - 1) * limitNum;
       const end = Math.min(start + limitNum, total);
       const pageSlice = start < total ? matches.slice(start, end) : [];
-      return NextResponse.json({ total, records: pageSlice });
+      return NextResponse.json({ total, records: pageSlice, partial: Date.now() - startedAt > scanDeadlineMs || scanned >= maxScans });
     }
 
+    // For non-search path, compute total and build paginated query only now (avoid expensive count during searches)
+    const totalSnap = await getCountFromServer(query(colRef));
+    const total = totalSnap.data().count || 0;
+
+    // Build base query
+    const orderField = sortBy || keyField;
+    let qBase = query(colRef, orderBy(orderField, sortOrder), fbLimit(limitNum));
+
     // Pagination via cursor
-    if (!search && page > 1) {
+    if (page > 1) {
       const prevQ = query(colRef, orderBy(orderField, sortOrder), fbLimit((page - 1) * limitNum));
       const prevSnap = await getDocs(prevQ);
       const last = prevSnap.docs[prevSnap.docs.length - 1];

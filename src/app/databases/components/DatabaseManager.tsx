@@ -104,6 +104,30 @@ export default function DatabaseManager() {
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [columnDefinitions, setColumnDefinitions] = useState<Record<string, any>>({});
   const [availableDatabases, setAvailableDatabases] = useState<DatabaseEntry[]>([]);
+	const [columnsQuery, setColumnsQuery] = useState('');
+
+	// Heuristics to improve UX: guess sensible defaults
+	function guessKeyFromColumns(cols: { index: number; name: string }[]): string {
+		const candidates = ['id', 'key', 'sku id', 'sku', 'tracking id', 'tracking_id'];
+		const lower = cols.map((c) => ({ ...c, l: c.name.toLowerCase() }));
+		for (const target of candidates) {
+			const f = lower.find((c) => c.l === target);
+			if (f) return f.name;
+		}
+		// fallback: first column
+		return cols[0]?.name || '';
+	}
+	function guessLabelFromColumns(cols: { index: number; name: string }[], keyName: string): string {
+		const candidates = ['name', 'title', 'product name', 'label'];
+		const lower = cols.map((c) => ({ ...c, l: c.name.toLowerCase() }));
+		for (const target of candidates) {
+			const f = lower.find((c) => c.l === target);
+			if (f && f.name !== keyName) return f.name;
+		}
+		// fallback: second column if exists and not same as key
+		const second = cols[1]?.name || '';
+		return second !== keyName ? second : '';
+	}
 
   // Edit modal
   const [showEdit, setShowEdit] = useState(false);
@@ -579,15 +603,15 @@ export default function DatabaseManager() {
   }, [showAdd, showEdit, showSync]);
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="bg-white shadow-sm rounded-lg border border-gray-200">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+		<div className="bg-gray-900/40 shadow-sm rounded-xl border border-gray-700 overflow-hidden backdrop-blur-sm">
+			<div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between bg-gray-900/40">
           <div className="flex items-center space-x-3">
-            <Database className="w-6 h-6 text-blue-600" />
+					<Database className="w-6 h-6 text-blue-400" />
             
           </div>
           <button
             onClick={() => setShowAdd(true)}
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+					className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-500"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add Database
@@ -601,70 +625,70 @@ export default function DatabaseManager() {
           </div>
         )}
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+			<div className="overflow-x-auto">
+				<table className="min-w-full divide-y divide-gray-700">
+					<thead className="bg-gray-800">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Key Column</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Label Column</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Selected Columns</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+							<th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Name</th>
+							<th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Key Column</th>
+							<th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Label Column</th>
+							<th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Selected Columns</th>
+							<th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Actions</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+					<tbody className="bg-transparent divide-y divide-gray-700/60">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center">
-                    <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                    <p className="text-gray-600">Loading databases…</p>
+								<td colSpan={5} className="px-6 py-8 text-center text-gray-300">
+									<div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+									<p>Loading databases…</p>
                   </td>
                 </tr>
               ) : databases.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
+								<td colSpan={5} className="px-6 py-10 text-center text-gray-400">
                     No databases yet. Click “Add Database” to begin.
                   </td>
                 </tr>
               ) : (
                 databases.map((d) => (
-                  <tr key={d.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
+								<tr key={d.id} className="hover:bg-gray-800/50">
+									<td className="px-6 py-4">
                       <button
                         onClick={() => router.push(`/databases/${d.id}/records`)}
-                        className="text-sm font-medium text-blue-600 hover:underline"
+											className="text-sm font-medium text-blue-300 hover:underline"
                       >
                         {d.tabName}
                       </button>
-                      {d.lastSyncAt && (
-                        <div className="text-xs text-gray-500 mt-1">
+										{d.lastSyncAt && (
+											<div className="text-xs text-gray-400 mt-1">
                           Last sync: {new Date(d.lastSyncAt).toLocaleString()}
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{d.keyColumn}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{d.labelColumn || <span className="text-gray-400">—</span>}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{columnsPreview(d.selectedColumns)}</td>
-                    <td className="px-6 py-4 text-sm">
+									<td className="px-6 py-4 text-sm text-gray-100">{d.keyColumn}</td>
+									<td className="px-6 py-4 text-sm text-gray-100">{d.labelColumn || <span className="text-gray-500">—</span>}</td>
+									<td className="px-6 py-4 text-sm text-gray-100">{columnsPreview(d.selectedColumns)}</td>
+									<td className="px-6 py-4 text-sm">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleSyncDatabase(d)}
                           disabled={syncingIds.has(d.id)}
-                          className="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 disabled:opacity-50"
+												className="inline-flex items-center px-3 py-1 bg-green-900/30 text-green-300 rounded-md hover:bg-green-900/50 disabled:opacity-50"
                         >
-                          <RefreshCw className={`w-4 h-4 mr-1 ${syncingIds.has(d.id) ? 'animate-spin' : ''}`} />
+												<RefreshCw className={`w-4 h-4 mr-1 ${syncingIds.has(d.id) ? 'animate-spin' : ''}`} />
                           Sync
                         </button>
                         <button
                           onClick={() => handleEditDatabase(d)}
-                          className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+												className="inline-flex items-center px-3 py-1 bg-blue-900/30 text-blue-300 rounded-md hover:bg-blue-900/50"
                         >
                           <Edit className="w-4 h-4 mr-1" />
                           Edit
                         </button>
                         <button
                           onClick={() => handleDeleteDatabase(d.id)}
-                          className="inline-flex items-center px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200"
+												className="inline-flex items-center px-3 py-1 bg-red-900/30 text-red-300 rounded-md hover:bg-red-900/50"
                         >
                           <Trash2 className="w-4 h-4 mr-1" />
                           Delete
@@ -680,11 +704,11 @@ export default function DatabaseManager() {
       </div>
 
       {/* Add Modal */}
-      {showAdd && (
-        <div className="fixed inset-0 bg-black/60 grid place-items-center z-[100]">
-          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full mx-4 sm:mx-6 max-h-[90vh] h-[90vh] sm:h-auto flex flex-col z-[101]">
-            <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white z-10">
-              <h3 className="text-lg font-semibold">Add New Database</h3>
+		{showAdd && (
+			<div className="fixed inset-0 bg-black/60 grid place-items-center z-[100]">
+				<div className="bg-gray-900 text-gray-100 rounded-xl shadow-2xl border border-gray-800 max-w-3xl w-full mx-4 sm:mx-6 max-h-[90vh] h-[90vh] sm:h-auto flex flex-col z-[101] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-gray-700 sticky top-0 bg-gray-900 z-10">
+              <h3 className="text-lg font-semibold text-white">Add New Database</h3>
               <button
                 onClick={() => {
                   setShowAdd(false);
@@ -694,49 +718,104 @@ export default function DatabaseManager() {
                   setSelectedColumns([]);
                   setColumnDefinitions({});
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-200"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="p-6 space-y-6 flex-1 overflow-y-auto">
-              <div>
-                <label className="block text-sm font-medium mb-2">Select Google Sheet Tab</label>
-                <select
-                  value={selectedTab?.sheetTitle || ''}
-                  onChange={(e) => {
-                    const tab = availableTabsForAdd().find((t) => t.sheetTitle === e.target.value) || null;
-                    setSelectedTab(tab);
-                    setSelectedKeyColumn('');
-                    setSelectedLabelColumn('');
-                    setSelectedColumns([]);
-                    if (tab && (!tab.columns || tab.columns.length === 0)) {
-                      // fetch headers on-demand for this tab
-                      void ensureColumnsForTab(tab.sheetTitle);
-                    }
-                  }}
-                  className="w-full px-3 py-2 border rounded-lg"
-                >
-                  <option value="">Choose a tab…</option>
-                  {availableTabsForAdd().map((t) => (
-                    <option key={t.sheetId} value={t.sheetTitle}>
-                      {t.sheetTitle}
-                    </option>
-                  ))}
-                </select>
-              </div>
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+						{/* Select Google Sheet */}
+						<div>
+                        <label className="block text-sm font-medium mb-1 text-gray-200">Select Google Sheet Tab</label>
+                        <div className="text-[11px] h-4 text-transparent select-none">placeholder</div>
+                            <select
+								value={selectedTab?.sheetTitle || ''}
+								onChange={(e) => {
+									const tab = availableTabsForAdd().find((t) => t.sheetTitle === e.target.value) || null;
+									setSelectedTab(tab);
+                                // Auto-suggest key/label based on headers
+                                if (tab && Array.isArray(tab.columns) && tab.columns.length) {
+                                  const suggestedKey = guessKeyFromColumns(tab.columns);
+                                  const suggestedLabel = guessLabelFromColumns(tab.columns, suggestedKey);
+                                  setSelectedKeyColumn(suggestedKey);
+                                  setSelectedLabelColumn(suggestedLabel);
+                                } else {
+                                  setSelectedKeyColumn('');
+                                  setSelectedLabelColumn('');
+                                }
+									setSelectedColumns([]);
+									if (tab && (!tab.columns || tab.columns.length === 0)) {
+										// fetch headers on-demand for this tab
+										void ensureColumnsForTab(tab.sheetTitle);
+									}
+								}}
+								className="w-full px-3 py-2 border border-gray-700 rounded-lg bg-gray-800 text-gray-100"
+							>
+								<option value="">Choose a tab…</option>
+								{availableTabsForAdd().map((t) => (
+									<option key={t.sheetId} value={t.sheetTitle}>
+										{t.sheetTitle}
+									</option>
+								))}
+							</select>
+                  
+						</div>
+
+						{/* Key Column */}
+						<div>
+                        <label className="block text-sm font-medium mb-1 text-gray-200">Key Column</label>
+                        <div className="text-[11px] h-4 text-gray-400">cannot be changed later</div>
+                            <select
+								value={selectedKeyColumn}
+								onChange={(e) => setSelectedKeyColumn(e.target.value)}
+								className="w-full px-3 py-2 border border-gray-700 rounded-lg bg-gray-800 text-gray-100"
+								disabled={!selectedTab || loadingColumns || ((selectedTab?.columns?.length || 0) === 0)}
+							>
+								<option value="">Choose key column…</option>
+								{(selectedTab?.columns || []).map((c) => (
+									<option key={c.index} value={c.name}>
+										{c.name}
+									</option>
+								))}
+							</select>
+                        {loadingColumns && selectedTab && (
+                            <p className="text-xs text-gray-400 mt-2">Loading columns…</p>
+                        )}
+						</div>
+
+						{/* Label Column */}
+						<div>
+                        <label className="block text-sm font-medium mb-1 text-gray-200">Label Column (optional)</label>
+                        <div className="text-[11px] h-4 text-transparent select-none">placeholder</div>
+                            <select
+								value={selectedLabelColumn}
+								onChange={(e) => setSelectedLabelColumn(e.target.value)}
+								className="w-full px-3 py-2 border border-gray-700 rounded-lg bg-gray-800 text-gray-100"
+								disabled={!selectedTab || loadingColumns || ((selectedTab?.columns?.length || 0) === 0)}
+							>
+								<option value="">— None —</option>
+								{(selectedTab?.columns || []).map((c) => (
+									<option key={c.index} value={c.name} disabled={c.name === selectedKeyColumn}>
+										{c.name}
+									</option>
+								))}
+							</select>
+                        
+						</div>
+					</div>
 
               {selectedTab && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium mb-2">
+									<label className="block text-sm font-medium mb-2 text-gray-200">
                       Key Column <span className="text-gray-500">(cannot be changed later)</span>
                     </label>
-                    <select
+						<select
                       value={selectedKeyColumn}
                       onChange={(e) => setSelectedKeyColumn(e.target.value)}
-                      className="w-full px-3 py-2 border rounded-lg"
+                  className="w-full px-3 py-2 border border-gray-700 rounded-lg bg-gray-800 text-gray-100"
                       disabled={loadingColumns || (selectedTab.columns?.length || 0) === 0}
                     >
                       <option value="">Choose key column…</option>
@@ -746,17 +825,17 @@ export default function DatabaseManager() {
                         </option>
                       ))}
                     </select>
-                    {loadingColumns && (
-                      <p className="text-xs text-gray-500 mt-1">Loading columns…</p>
+									{loadingColumns && (
+                      <p className="text-xs text-gray-400 mt-1">Loading columns…</p>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium mb-2">Label Column (optional)</label>
-                    <select
+									<label className="block text-sm font-medium mb-2 text-gray-200">Label Column (optional)</label>
+						<select
                       value={selectedLabelColumn}
                       onChange={(e) => setSelectedLabelColumn(e.target.value)}
-                      className="w-full px-3 py-2 border rounded-lg"
+                  className="w-full px-3 py-2 border border-gray-700 rounded-lg bg-gray-800 text-gray-100"
                       disabled={loadingColumns || (selectedTab.columns?.length || 0) === 0}
                     >
                       <option value="">— None —</option>
@@ -766,11 +845,14 @@ export default function DatabaseManager() {
                         </option>
                       ))}
                     </select>
-                  </div>
+								<p className="mt-1 text-xs text-gray-400">Shown in dropdowns when this table is referenced.</p>
+							</div>
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-medium">Configure Columns</label>
+									<label className="block text-sm font-medium text-gray-200">Configure Columns
+										<span className="ml-2 text-xs text-gray-400">{selectedColumns.length} selected</span>
+									</label>
                       <div className="flex gap-2">
                         <button
                           type="button"
@@ -783,7 +865,7 @@ export default function DatabaseManager() {
                             });
                             setColumnDefinitions(newDefs);
                           }}
-                          className="text-xs text-blue-600 hover:underline"
+                          className="text-xs text-blue-300 hover:text-blue-200"
                           disabled={loadingColumns || (selectedTab.columns?.length || 0) === 0}
                         >
                           Select all
@@ -791,19 +873,52 @@ export default function DatabaseManager() {
                         <button
                           type="button"
                           onClick={() => setSelectedColumns([])}
-                          className="text-xs text-gray-600 hover:underline"
+                          className="text-xs text-gray-400 hover:text-gray-300"
                         >
                           Deselect All
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Prefer name-like and ID-like columns
+                            const preferred = new Set<string>();
+                            const cols = selectedTab.columns;
+                            const key = selectedKeyColumn;
+                            const label = selectedLabelColumn;
+                            if (key) preferred.add(key);
+                            if (label) preferred.add(label);
+                            cols.forEach((c) => {
+                              const l = c.name.toLowerCase();
+                              if (l.includes('name') || l.includes('title')) preferred.add(c.name);
+                              if (l.endsWith('id') || l === 'id') preferred.add(c.name);
+                            });
+                            const pick = Array.from(preferred);
+                            setSelectedColumns(pick);
+                            const defs: Record<string, any> = {};
+                            pick.forEach((n) => (defs[n] = { type: 'text', options: [] }));
+                            setColumnDefinitions(defs);
+                          }}
+                          className="text-xs text-emerald-300 hover:text-emerald-200"
+                        >
+                          Smart select
+                        </button>
                       </div>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto border rounded-lg p-3 space-y-3">
-                      {selectedTab.columns.map((c) => (
-                        <div key={c.index} className="border rounded-lg p-3 bg-gray-50">
+								</div>
+								<div className="max-h-96 overflow-y-auto border border-gray-700 rounded-lg p-3 space-y-3 bg-gray-800">
+									<div className="sticky top-0 bg-gray-800 pb-3">
+										<input
+											value={columnsQuery}
+											onChange={(e) => setColumnsQuery(e.target.value)}
+											placeholder="Search columns…"
+											className="w-full px-3 py-2 text-sm rounded-md border border-gray-700 bg-gray-900 text-gray-100 placeholder-gray-500"
+										/>
+									</div>
+									{(columnsQuery ? selectedTab.columns.filter((c) => c.name.toLowerCase().includes(columnsQuery.toLowerCase())) : selectedTab.columns).map((c) => (
+                        <div key={c.index} className="border border-gray-700 rounded-lg p-3 bg-gray-800">
                           <div className="flex items-center gap-3 mb-2">
                             <input
                               type="checkbox"
-                              className="rounded"
+                              className="rounded border-gray-600"
                               checked={selectedColumns.includes(c.name)}
                               onChange={(e) => {
                                 if (e.target.checked) {
@@ -822,14 +937,15 @@ export default function DatabaseManager() {
                                 }
                               }}
                             />
-                            <span className="font-medium text-sm">{c.name}</span>
+                            <span className="font-medium text-sm text-gray-100">{c.name}</span>
+                            <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-gray-900 text-gray-400 border border-gray-700">{c.index}</span>
                           </div>
                           
                           {selectedColumns.includes(c.name) && (
                             <div className="ml-6 space-y-2">
                               <div>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">Column Type</label>
-                                <select
+                                <label className="block text-xs font-medium text-gray-300 mb-1">Column Type</label>
+								<select
                                   value={columnDefinitions[c.name]?.type || 'text'}
                                   onChange={(e) => {
                                     const newType = e.target.value as ColumnType;
@@ -846,7 +962,7 @@ export default function DatabaseManager() {
                                       }
                                     }));
                                   }}
-                                  className="w-full px-2 py-1 text-xs border rounded"
+                                  className="w-full px-2 py-1 text-xs border border-gray-700 rounded bg-gray-800 text-gray-100"
                                 >
                                   <option value="text">Text</option>
                                   <option value="number">Number</option>
@@ -862,8 +978,8 @@ export default function DatabaseManager() {
                               {(columnDefinitions[c.name]?.type === 'enum' || columnDefinitions[c.name]?.type === 'enumlist') && (
                                 <div className="space-y-2">
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Source Type</label>
-                                    <select
+                                    <label className="block text-xs font-medium text-gray-300 mb-1">Source Type</label>
+								<select
                                       value={columnDefinitions[c.name]?.enumSource || 'manual'}
                                       onChange={(e) => {
                                         const newSource = e.target.value as 'auto' | 'manual' | 'ref';
@@ -879,7 +995,7 @@ export default function DatabaseManager() {
                                           }
                                         }));
                                       }}
-                                      className="w-full px-2 py-1 text-xs border rounded"
+                                      className="w-full px-2 py-1 text-xs border border-gray-700 rounded bg-gray-800 text-gray-100"
                                     >
                                       <option value="auto">Auto (Unique values from collection)</option>
                                       <option value="manual">Manual (Enter values)</option>
@@ -889,11 +1005,11 @@ export default function DatabaseManager() {
                                   
                                   {columnDefinitions[c.name]?.enumSource === 'manual' && (
                                     <div>
-                                      <label className="block text-xs font-medium text-gray-600 mb-1">Options</label>
+                                      <label className="block text-xs font-medium text-gray-300 mb-1">Options</label>
                                       <div className="space-y-1">
                                     {(columnDefinitions[c.name]?.options || []).map((option: string, idx: number) => (
                                       <div key={idx} className="flex gap-1">
-                                        <input
+											<input
                                           type="text"
                                           value={option}
                                           onChange={(e) => {
@@ -904,7 +1020,7 @@ export default function DatabaseManager() {
                                               [c.name]: { ...prev[c.name], options: newOptions }
                                             }));
                                           }}
-                                          className="flex-1 px-2 py-1 text-xs border rounded"
+                                          className="flex-1 px-2 py-1 text-xs border border-gray-700 rounded bg-gray-800 text-gray-100"
                                           placeholder="Option value"
                                         />
                                         <button
@@ -916,7 +1032,7 @@ export default function DatabaseManager() {
                                               [c.name]: { ...prev[c.name], options: newOptions }
                                             }));
                                           }}
-                                          className="px-2 py-1 text-xs bg-red-100 text-red-600 rounded hover:bg-red-200"
+                                          className="px-2 py-1 text-xs bg-red-900/30 text-red-300 rounded hover:bg-red-900/50"
                                         >
                                           ×
                                         </button>
@@ -931,7 +1047,7 @@ export default function DatabaseManager() {
                                           [c.name]: { ...prev[c.name], options: newOptions }
                                         }));
                                       }}
-                                      className="w-full px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded hover:bg-blue-200"
+                                      className="w-full px-2 py-1 text-xs bg-blue-600/20 text-blue-300 rounded hover:bg-blue-600/30"
                                     >
                                        + Add Option
                                      </button>
@@ -942,8 +1058,8 @@ export default function DatabaseManager() {
                                   {columnDefinitions[c.name]?.enumSource === 'ref' && (
                                     <div className="space-y-2">
                                       <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Reference Collection</label>
-                                        <select
+                                        <label className="block text-xs font-medium text-gray-300 mb-1">Reference Collection</label>
+											<select
                                           value={columnDefinitions[c.name]?.referenceCollection || ''}
                                           onChange={(e) => {
                                             setColumnDefinitions(prev => ({
@@ -951,7 +1067,7 @@ export default function DatabaseManager() {
                                               [c.name]: { ...prev[c.name], referenceCollection: e.target.value }
                                             }));
                                           }}
-                                          className="w-full px-2 py-1 text-xs border rounded"
+                                            className="w-full px-2 py-1 text-xs border border-gray-700 rounded bg-gray-800 text-gray-100"
                                         >
                                           <option value="">Select collection...</option>
                                           {availableDatabases.map(db => (
@@ -962,8 +1078,8 @@ export default function DatabaseManager() {
                                         </select>
                                       </div>
                                       <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Key Column (stored value)</label>
-                                        <input
+                                      <label className="block text-xs font-medium text-gray-300 mb-1">Key Column (stored value)</label>
+											<input
                                           type="text"
                                           value={columnDefinitions[c.name]?.referenceKeyColumn || ''}
                                           onChange={(e) => {
@@ -972,13 +1088,13 @@ export default function DatabaseManager() {
                                               [c.name]: { ...prev[c.name], referenceKeyColumn: e.target.value }
                                             }));
                                           }}
-                                          className="w-full px-2 py-1 text-xs border rounded"
+                                            className="w-full px-2 py-1 text-xs border border-gray-700 rounded bg-gray-800 text-gray-100"
                                           placeholder="e.g., id"
                                         />
                                       </div>
                                       <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Label Column (displayed value)</label>
-                                        <input
+                                        <label className="block text-xs font-medium text-gray-300 mb-1">Label Column (displayed value)</label>
+											<input
                                           type="text"
                                           value={columnDefinitions[c.name]?.referenceLabelColumn || ''}
                                           onChange={(e) => {
@@ -987,7 +1103,7 @@ export default function DatabaseManager() {
                                               [c.name]: { ...prev[c.name], referenceLabelColumn: e.target.value }
                                             }));
                                           }}
-                                          className="w-full px-2 py-1 text-xs border rounded"
+                                            className="w-full px-2 py-1 text-xs border border-gray-700 rounded bg-gray-800 text-gray-100"
                                           placeholder="e.g., name"
                                         />
                                       </div>
@@ -1066,7 +1182,7 @@ export default function DatabaseManager() {
               )}
             </div>
 
-            <div className="p-4 sm:p-6 border-t flex justify-end gap-3 sticky bottom-0 bg-white">
+            <div className="p-4 sm:p-6 border-t border-gray-700 flex justify-end gap-3 sticky bottom-0 bg-gray-900">
               <button
                 onClick={() => {
                   setShowAdd(false);
@@ -1075,7 +1191,7 @@ export default function DatabaseManager() {
                   setSelectedLabelColumn('');
                   setSelectedColumns([]);
                 }}
-                className="px-4 py-2 border rounded-lg"
+                className="px-4 py-2 border border-gray-600 rounded-lg text-gray-200 hover:bg-gray-800"
               >
                 Cancel
               </button>
@@ -1087,7 +1203,7 @@ export default function DatabaseManager() {
                   !selectedKeyColumn ||
                   selectedColumns.length === 0
                 }
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 hover:bg-blue-500"
               >
                 {submitting ? 'Adding…' : 'Add Database'}
               </button>
@@ -1098,28 +1214,28 @@ export default function DatabaseManager() {
 
       {/* Edit Modal */}
       {showEdit && editing && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-7xl w-full h-[95vh] flex flex-col border border-gray-200">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 text-gray-100 rounded-2xl shadow-2xl max-w-7xl w-full h-[95vh] flex flex-col border border-gray-700 overflow-hidden">
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="block text-xs font-medium text-gray-600">
+                  <label className="block text-xs font-medium text-gray-300">
                     Key Column <span className="text-gray-400 font-normal">(cannot be changed)</span>
                   </label>
-                  <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 text-sm">
+                  <div className="w-full px-3 py-2 border border-gray-700 rounded-lg bg-gray-800 text-gray-100 text-sm">
                     <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                      <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
                       {editing.keyColumn}
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-xs font-medium text-gray-600">Label Column (optional)</label>
+                  <label className="block text-xs font-medium text-gray-300">Label Column (optional)</label>
                   <select
                     value={editLabelColumn}
                     onChange={(e) => setEditLabelColumn(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-3 py-2 text-sm border border-gray-700 rounded-lg bg-gray-800 text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
                   >
                     <option value="">— None —</option>
                     {editColumnsSource.map((col, i) => (
@@ -1134,8 +1250,8 @@ export default function DatabaseManager() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h4 className="text-lg font-semibold text-gray-900">Configure Columns ({editing.tabName})</h4>
-                    <p className="text-xs text-gray-500 mt-0.5">Select columns and configure their data types</p>
+                    <h4 className="text-lg font-semibold text-white">Configure Columns ({editing.tabName})</h4>
+                    <p className="text-xs text-gray-400 mt-0.5">Select columns and configure their data types</p>
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -1154,7 +1270,7 @@ export default function DatabaseManager() {
                         });
                         setEditColumnDefinitions(newDefs);
                       }}
-                      className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors duration-200 font-medium"
+                      className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-500 transition-colors duration-200 font-medium"
                     >
                       Select All
                     </button>
@@ -1164,17 +1280,17 @@ export default function DatabaseManager() {
                         setEditSelectedColumns([]);
                         setEditColumnDefinitions({});
                       }}
-                      className="px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors duration-200 font-medium"
+                      className="px-3 py-1.5 text-xs bg-gray-800 text-gray-200 border border-gray-700 rounded-md hover:bg-gray-700 transition-colors duration-200 font-medium"
                     >
                       Deselect All
                     </button>
                   </div>
                 </div>
-                <div className="border border-gray-200 rounded-lg shadow-sm">
+                <div className="border border-gray-700 rounded-lg shadow-sm">
                   {/* Table Header */}
-                  <div className="grid grid-cols-5 gap-3 p-3 bg-gray-50 border-b border-gray-200 font-medium text-xs text-gray-600 sticky top-0">
+                  <div className="grid grid-cols-5 gap-3 p-3 bg-gray-800 border-b border-gray-700 font-medium text-xs text-gray-300 sticky top-0">
                     <div className="flex items-center gap-2">
-                      <div className="w-0.5 h-3 bg-blue-500 rounded-full"></div>
+                      <div className="w-0.5 h-3 bg-blue-400 rounded-full"></div>
                       Column Name
                     </div>
                     <div className="text-center">Select</div>
@@ -1185,10 +1301,10 @@ export default function DatabaseManager() {
                   
                   {/* Table Rows */}
                   {editColumnsSource.map((c) => (
-                    <div key={c.name} className="grid grid-cols-5 gap-3 p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150">
+                    <div key={c.name} className="grid grid-cols-5 gap-3 p-3 border-b border-gray-800 hover:bg-gray-800/50 transition-colors duration-150">
                       {/* Column Name */}
                       <div className="flex items-center">
-                        <span className="text-sm font-medium text-gray-900">{c.name}</span>
+                        <span className="text-sm font-medium text-gray-100">{c.name}</span>
                       </div>
                       
                       {/* Select Checkbox */}
@@ -1214,7 +1330,7 @@ export default function DatabaseManager() {
                                 // Remove column definition
                               }
                             }}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            className="rounded border-gray-600 text-blue-500 focus:ring-blue-500"
                           />
                         </label>
                       </div>
@@ -1240,7 +1356,7 @@ export default function DatabaseManager() {
                                 }
                               }));
                             }}
-                            className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white"
+                            className="w-full px-2 py-1.5 text-xs border border-gray-700 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-800 text-gray-100"
                           >
                             <option value="text">📝 Text</option>
                             <option value="number">🔢 Number</option>
@@ -1277,7 +1393,7 @@ export default function DatabaseManager() {
                                   }
                                 }));
                               }}
-                              className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white"
+                              className="w-full px-2 py-1.5 text-xs border border-gray-700 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-800 text-gray-100"
                             >
                               <option value="auto">🤖 Auto-generated</option>
                               <option value="manual">✏️ Manual entry</option>
@@ -1312,7 +1428,7 @@ export default function DatabaseManager() {
                                           [c.name]: { ...prev[c.name], options: newOptions }
                                         }));
                                       }}
-                                      className="flex-1 px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                      className="flex-1 px-2 py-1 text-xs border border-gray-700 rounded bg-gray-800 text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                                       placeholder={`Option ${idx + 1}`}
                                     />
                                     <button
@@ -1324,14 +1440,14 @@ export default function DatabaseManager() {
                                           [c.name]: { ...prev[c.name], options: newOptions }
                                         }));
                                       }}
-                                      className="px-1 py-1 text-xs bg-red-100 text-red-600 rounded hover:bg-red-200"
+                                      className="px-1 py-1 text-xs bg-red-900/30 text-red-300 rounded hover:bg-red-900/50"
                                     >
                                       ×
                                     </button>
                                   </div>
                                 ))}
                                 {(editColumnDefinitions[c.name]?.options || []).length > 3 && (
-                                  <div className="text-xs text-gray-500 italic">+{(editColumnDefinitions[c.name]?.options || []).length - 3} more options</div>
+                                  <div className="text-xs text-gray-400 italic">+{(editColumnDefinitions[c.name]?.options || []).length - 3} more options</div>
                                 )}
                                 <button
                                   type="button"
@@ -1342,7 +1458,7 @@ export default function DatabaseManager() {
                                       [c.name]: { ...prev[c.name], options: newOptions }
                                     }));
                                   }}
-                                  className="w-full px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
+                                  className="w-full px-2 py-1 text-xs bg-blue-600/20 text-blue-300 rounded hover:bg-blue-600/30 transition-colors"
                                 >
                                   + Add Option
                                 </button>
@@ -1368,7 +1484,7 @@ export default function DatabaseManager() {
                                       }
                                     }));
                                   }}
-                                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                  className="w-full px-2 py-1 text-xs border border-gray-700 rounded bg-gray-800 text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                                 >
                                   <option value="">Select collection...</option>
                                   {availableDatabases.map(db => (
@@ -1394,8 +1510,8 @@ export default function DatabaseManager() {
               </div>
             </div>
 
-            <div className="flex-shrink-0 p-8 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
-              <div className="text-sm text-gray-600">
+            <div className="flex-shrink-0 p-8 border-t border-gray-700 bg-gray-900 flex justify-between items-center">
+              <div className="text-sm text-gray-300">
                 {editSelectedColumns.length} of {editColumnsSource.length} columns selected
               </div>
               <div className="flex gap-4">
@@ -1407,14 +1523,14 @@ export default function DatabaseManager() {
                     setEditLabelColumn('');
                     setEditColumnDefinitions({});
                   }}
-                  className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-white hover:border-gray-400 transition-all duration-200 font-medium"
+                  className="px-6 py-3 border border-gray-600 rounded-xl text-gray-200 hover:bg-gray-800 transition-all duration-200 font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveEdit}
                   disabled={submitting || !editing || editSelectedColumns.length === 0}
-                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 font-medium shadow-lg"
+                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-500 hover:to-indigo-500 transition-all duration-200 font-medium shadow-lg"
                 >
                   {submitting ? (
                     <div className="flex items-center gap-2">

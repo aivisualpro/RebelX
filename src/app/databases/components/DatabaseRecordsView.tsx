@@ -534,19 +534,19 @@ export default function DatabaseRecordsView({
         onConfirm={() => confirm.onYes?.()}
       />
 
-      <div className="min-h-screen mt-10 bg-transparent">
+      <div className="min-h-screen bg-transparent">
         {/* Header */}
         <div className="bg-gray-900/40 border-b border-gray-700 backdrop-blur-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-14 gap-4">
               {/* Database Name and Record Count */}
               <div className="flex items-center space-x-2">
-                <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{databaseName}</h1>
+                <h1 className="text-lg font-semibold text-white">{databaseName}</h1>
                 <span className="text-sm text-gray-500 dark:text-gray-400">({totalRecords.toLocaleString()} records)</span>
               </div>
 
               {/* Controls Row */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-nowrap overflow-x-auto">
                 {/* Add Record Button */}
                 <button
                   onClick={startAdd}
@@ -555,6 +555,126 @@ export default function DatabaseRecordsView({
                   <Plus className="w-4 h-4 mr-2" />
                   Add Record
                 </button>
+
+                {/* Inline Filters */}
+                <div className="hidden md:flex items-center gap-2 flex-nowrap">
+                  <span className="text-sm font-medium text-gray-300">Filters:</span>
+                  {visibleCols
+                    .filter((column) => {
+                      const colDef = columnDefinitions[column];
+                      return colDef && colDef.type && ['enum', 'enumlist', 'reference'].includes(colDef.type);
+                    })
+                    .slice(0, 4)
+                    .map((column) => (
+                      <details key={column} className="relative">
+                        <summary className="list-none px-3 py-1.5 text-sm border border-gray-600 rounded-md bg-gray-700 text-gray-200 cursor-pointer hover:bg-gray-600 inline-flex items-center gap-1">
+                          {column}
+                          <ChevronDown className="w-3 h-3" />
+                        </summary>
+                        <div className="absolute left-0 mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-700 rounded-lg shadow-lg p-3 z-20">
+                          <div className="space-y-2">
+                            {(() => {
+                              const colDef = columnDefinitions[column];
+                              if (colDef?.type === 'enum' || colDef?.type === 'enumlist') {
+                                const options = colDef.options || [];
+                                return (
+                                  <div className="space-y-1">
+                                    <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Select option:</div>
+                                    {options.map((option: string, idx: number) => (
+                                      <label key={idx} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">
+                                        <input
+                                          type={colDef.type === 'enum' ? 'radio' : 'checkbox'}
+                                          name={`filter-${column}`}
+                                          checked={
+                                            colDef.type === 'enum'
+                                              ? filters[column] === option
+                                              : (filters[column] || '').split(',').includes(option)
+                                          }
+                                          onChange={(e) => {
+                                            if (colDef.type === 'enum') {
+                                              setFilters((prev) => ({
+                                                ...prev,
+                                                [column]: e.target.checked ? option : '',
+                                              }));
+                                            } else {
+                                              const currentValues = (filters[column] || '')
+                                                .split(',')
+                                                .filter((v) => v);
+                                              const newValues = e.target.checked
+                                                ? [...currentValues, option]
+                                                : currentValues.filter((v) => v !== option);
+                                              setFilters((prev) => ({
+                                                ...prev,
+                                                [column]: newValues.join(','),
+                                              }));
+                                            }
+                                            setCurrentPage(1);
+                                          }}
+                                          className="h-4 w-4"
+                                        />
+                                        <span className="truncate" title={option}>
+                                          {option}
+                                        </span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                );
+                              } else if (colDef?.type === 'reference') {
+                                const options = refOptions[column] || [];
+                                return (
+                                  <div className="space-y-1">
+                                    <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Reference filter:</div>
+                                    <SearchableDropdown
+                                      value={filters[column] || ''}
+                                      onChange={(value) => {
+                                        setFilters((prev) => ({
+                                          ...prev,
+                                          [column]: value,
+                                        }));
+                                        setCurrentPage(1);
+                                      }}
+                                      options={options}
+                                      placeholder={`Filter by ${column}…`}
+                                    />
+                                  </div>
+                                );
+                              }
+                              return (
+                                <input
+                                  type="text"
+                                  placeholder={`Filter by ${column}...`}
+                                  value={filters[column] || ''}
+                                  className="w-full px-3 py-1.5 text-sm border border-gray-600 rounded-md bg-gray-700 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                  onChange={(e) => {
+                                    setFilters((prev) => ({
+                                      ...prev,
+                                      [column]: e.target.value,
+                                    }));
+                                    setCurrentPage(1);
+                                  }}
+                                />
+                              );
+                            })()}
+                            <div className="flex gap-2 pt-2 border-t border-gray-700">
+                              <button
+                                onClick={() => {
+                                  setFilters((prev) => {
+                                    const newFilters = { ...prev } as Record<string, string>;
+                                    delete newFilters[column];
+                                    return newFilters;
+                                  });
+                                  setCurrentPage(1);
+                                }}
+                                className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-200 dark:hover:bg-gray-500"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </details>
+                    ))}
+                </div>
 
                 {/* Search Bar */}
                 <div className="relative">
@@ -615,147 +735,25 @@ export default function DatabaseRecordsView({
                     </div>
                   </div>
                 </details>
+
+                {/* Page size selector */}
+                <select
+                  value={recordsPerPage}
+                  onChange={(e) => { setRecordsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                  className="px-2.5 py-1.5 text-sm border border-gray-600 rounded-md bg-gray-700 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value={10}>10 / page</option>
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                  <option value={100}>100 / page</option>
+                </select>
               </div>
             </div>
           </div>
         </div>
 
         {/* Content */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 mt-6">
-          {/* Page size selector and Filters */}
-          <div className="mb-4 flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              {/* Dynamic Filters - Only for dropdown columns */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Filters:</span>
-                {visibleCols.filter(column => {
-                  // Only show filters for enum, enumlist, and reference columns
-                  const colDef = columnDefinitions[column];
-                  return colDef && colDef.type && ['enum', 'enumlist', 'reference'].includes(colDef.type);
-                }).slice(0, 4).map((column) => (
-                  <details key={column} className="relative">
-                    <summary className="list-none px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-600 inline-flex items-center gap-1">
-                      {column}
-                      <ChevronDown className="w-3 h-3" />
-                    </summary>
-                    <div className="absolute left-0 mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 z-20">
-                      <div className="space-y-2">
-                        {(() => {
-                          const colDef = columnDefinitions[column];
-                          if (colDef?.type === 'enum' || colDef?.type === 'enumlist') {
-                            // Show predefined options for enum columns
-                            const options = colDef.options || [];
-                            return (
-                              <div className="space-y-1">
-                                <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Select option:</div>
-                                {options.map((option: string, idx: number) => (
-                                  <label key={idx} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">
-                                    <input
-                                      type={colDef.type === 'enum' ? 'radio' : 'checkbox'}
-                                      name={`filter-${column}`}
-                                      checked={
-                                        colDef.type === 'enum' 
-                                          ? filters[column] === option
-                                          : (filters[column] || '').split(',').includes(option)
-                                      }
-                                      onChange={(e) => {
-                                        if (colDef.type === 'enum') {
-                                          setFilters(prev => ({
-                                            ...prev,
-                                            [column]: e.target.checked ? option : ''
-                                          }));
-                                        } else {
-                                          const currentValues = (filters[column] || '').split(',').filter(v => v);
-                                          const newValues = e.target.checked
-                                            ? [...currentValues, option]
-                                            : currentValues.filter(v => v !== option);
-                                          setFilters(prev => ({
-                                            ...prev,
-                                            [column]: newValues.join(',')
-                                          }));
-                                        }
-                                        setCurrentPage(1);
-                                      }}
-                                      className="h-4 w-4"
-                                    />
-                                    <span className="truncate" title={option}>{option}</span>
-                                  </label>
-                                ))}
-                              </div>
-                            );
-                          } else if (colDef?.type === 'reference') {
-                            // Show reference options via searchable dropdown (labels shown, keys stored)
-                            const options = refOptions[column] || [];
-                            return (
-                              <div className="space-y-1">
-                                <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Reference filter:</div>
-                                <SearchableDropdown
-                                  value={filters[column] || ''}
-                                  onChange={(value) => {
-                                    setFilters(prev => ({
-                                      ...prev,
-                                      [column]: value
-                                    }));
-                                    setCurrentPage(1);
-                                  }}
-                                  options={options}
-                                  placeholder={`Filter by ${column}…`}
-                                />
-                              </div>
-                            );
-                          } else {
-                            // Fallback for other column types
-                            return (
-                              <input
-                                type="text"
-                                placeholder={`Filter by ${column}...`}
-                                value={filters[column] || ''}
-                                className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                onChange={(e) => {
-                                  setFilters(prev => ({
-                                    ...prev,
-                                    [column]: e.target.value
-                                  }));
-                                  setCurrentPage(1);
-                                }}
-                              />
-                            );
-                          }
-                        })()}
-                        <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-600">
-                          <button
-                            onClick={() => {
-                              setFilters(prev => {
-                                const newFilters = { ...prev };
-                                delete newFilters[column];
-                                return newFilters;
-                              });
-                              setCurrentPage(1);
-                            }}
-                            className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-200 dark:hover:bg-gray-500"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </details>
-                ))}
-              </div>
-            </div>
-            
-            <select
-              value={recordsPerPage}
-              onChange={(e) => { setRecordsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-              className="px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value={10}>10 / page</option>
-              <option value={25}>25 / page</option>
-              <option value={50}>50 / page</option>
-              <option value={100}>100 / page</option>
-            </select>
-          </div>
-
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Table */}
           <div className="bg-gray-900/40 rounded-lg shadow overflow-hidden backdrop-blur-sm">
             {loading ? (
@@ -770,8 +768,8 @@ export default function DatabaseRecordsView({
             ) : (
               <>
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-gray-50 dark:bg-gray-700">
+                  <table className="min-w-full divide-y divide-gray-700">
+                    <thead className="bg-gray-800">
                       <tr>
                         {visibleCols.map((human) => {
                           const k = sanitize(human);
@@ -780,7 +778,7 @@ export default function DatabaseRecordsView({
                             <th
                               key={human}
                               onClick={() => handleSort(human)}
-                              className="relative px-4 py-2 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider select-none"
+                              className="relative px-4 py-2 text-left text-[11px] font-semibold text-gray-300 uppercase tracking-wider select-none"
                               style={w ? { width: w, maxWidth: w, minWidth: w } : undefined}
                             >
                               <div className="flex items-center gap-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600">
@@ -796,9 +794,9 @@ export default function DatabaseRecordsView({
                         <th className="px-4 py-2 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="bg-transparent divide-y divide-gray-200/20 dark:divide-gray-700/60">
+                    <tbody className="bg-transparent divide-y divide-gray-700/60">
                       {records.map((record, rowIdx) => (
-                        <tr key={record.id || rowIdx} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <tr key={record.id || rowIdx} className="hover:bg-gray-800/50 transition-colors">
                           {visibleCols.map((human) => {
                             const k = sanitize(human);
                             const raw = record[k] ?? record[human] ?? '';
@@ -820,10 +818,10 @@ export default function DatabaseRecordsView({
 
                             const w = widths[k];
                             return (
-                              <td key={human} className="px-4 py-2 text-xs text-gray-900 dark:text-gray-100 align-top" style={w ? { width: w, maxWidth: w, minWidth: w } : undefined}>
+                              <td key={human} className="px-4 py-2 text-xs text-gray-100 align-top" style={w ? { width: w, maxWidth: w, minWidth: w } : undefined}>
                                 <div className="whitespace-normal break-words">
                                   {isHttpsUrl(text) ? (
-                                    <a href={text} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-words">{text}</a>
+                                    <a href={text} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-300 hover:underline break-words">{text}</a>
                                   ) : (
                                     text || '—'
                                   )}
@@ -833,10 +831,10 @@ export default function DatabaseRecordsView({
                           })}
                           <td className="px-4 py-2 text-xs">
                             <div className="flex items-center gap-2">
-                              <button onClick={() => startEdit(record)} className="inline-flex items-center px-2 py-1 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100" title="Edit">
+                              <button onClick={() => startEdit(record)} className="inline-flex items-center px-2 py-1 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/40" title="Edit">
                                 <Edit3 className="w-4 h-4" />
                               </button>
-                              <button onClick={() => requestDelete(record)} className="inline-flex items-center px-2 py-1 rounded-md bg-red-50 text-red-700 hover:bg-red-100" title="Delete">
+                              <button onClick={() => requestDelete(record)} className="inline-flex items-center px-2 py-1 rounded-md bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200 dark:hover:bg-red-900/40" title="Delete">
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
